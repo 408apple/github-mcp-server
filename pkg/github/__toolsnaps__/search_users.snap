@@ -1,7 +1,8 @@
 {
   "annotations": {
-    "title": "Search users",
-    "readOnlyHint": true
+    "idempotentHint": false,
+    "readOnlyHint": true,
+    "title": "Search users"
   },
   "description": "Find GitHub users by username, real name, or other profile information. Useful for locating developers, contributors, or team members.",
   "inputSchema": {

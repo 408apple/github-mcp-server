@@ -1,7 +1,8 @@
 {
   "annotations": {
-    "title": "Create repository",
-    "readOnlyHint": false
+    "idempotentHint": false,
+    "readOnlyHint": false,
+    "title": "Create repository"
   },
   "description": "Create a new GitHub repository in your account or specified organization",
   "inputSchema": {
@@ -23,7 +24,8 @@
         "type": "string"
       },
       "private": {
-        "description": "Whether repo should be private",
+        "default": true,
+        "description": "Whether the repository should be private. Defaults to true (private) when omitted.",
         "type": "boolean"
       }
     },

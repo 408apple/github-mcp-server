@@ -2,7 +2,6 @@ package github
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -12,110 +11,162 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/github/github-mcp-server/pkg/inventory"
+	"github.com/github/github-mcp-server/pkg/octicons"
 	"github.com/github/github-mcp-server/pkg/raw"
 	"github.com/github/github-mcp-server/pkg/translations"
-	"github.com/google/go-github/v74/github"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/google/go-github/v89/github"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/yosida95/uritemplate/v3"
 )
 
-// GetRepositoryResourceContent defines the resource template and handler for getting repository content.
-func GetRepositoryResourceContent(getClient GetClientFn, getRawClient raw.GetRawClientFn, t translations.TranslationHelperFunc) (mcp.ResourceTemplate, server.ResourceTemplateHandlerFunc) {
-	return mcp.NewResourceTemplate(
-			"repo://{owner}/{repo}/contents{/path*}", // Resource template
-			t("RESOURCE_REPOSITORY_CONTENT_DESCRIPTION", "Repository Content"),
-		),
-		RepositoryResourceContentsHandler(getClient, getRawClient)
+var (
+	repositoryResourceContentURITemplate       = uritemplate.MustNew("repo://{owner}/{repo}/contents{/path*}")
+	repositoryResourceBranchContentURITemplate = uritemplate.MustNew("repo://{owner}/{repo}/refs/heads/{branch}/contents{/path*}")
+	repositoryResourceCommitContentURITemplate = uritemplate.MustNew("repo://{owner}/{repo}/sha/{sha}/contents{/path*}")
+	repositoryResourceTagContentURITemplate    = uritemplate.MustNew("repo://{owner}/{repo}/refs/tags/{tag}/contents{/path*}")
+	repositoryResourcePrContentURITemplate     = uritemplate.MustNew("repo://{owner}/{repo}/refs/pull/{prNumber}/head/contents{/path*}")
+)
+
+// GetRepositoryResourceContent defines the resource template for getting repository content.
+func GetRepositoryResourceContent(t translations.TranslationHelperFunc) inventory.ServerResourceTemplate {
+	return inventory.NewServerResourceTemplate(
+		ToolsetMetadataRepos,
+		mcp.ResourceTemplate{
+			Name:        "repository_content",
+			URITemplate: repositoryResourceContentURITemplate.Raw(),
+			Description: t("RESOURCE_REPOSITORY_CONTENT_DESCRIPTION", "Repository Content"),
+			Icons:       octicons.Icons("repo"),
+		},
+		repositoryResourceContentsHandlerFunc(repositoryResourceContentURITemplate),
+	)
 }
 
-// GetRepositoryResourceBranchContent defines the resource template and handler for getting repository content for a branch.
-func GetRepositoryResourceBranchContent(getClient GetClientFn, getRawClient raw.GetRawClientFn, t translations.TranslationHelperFunc) (mcp.ResourceTemplate, server.ResourceTemplateHandlerFunc) {
-	return mcp.NewResourceTemplate(
-			"repo://{owner}/{repo}/refs/heads/{branch}/contents{/path*}", // Resource template
-			t("RESOURCE_REPOSITORY_CONTENT_BRANCH_DESCRIPTION", "Repository Content for specific branch"),
-		),
-		RepositoryResourceContentsHandler(getClient, getRawClient)
+// GetRepositoryResourceBranchContent defines the resource template for getting repository content for a branch.
+func GetRepositoryResourceBranchContent(t translations.TranslationHelperFunc) inventory.ServerResourceTemplate {
+	return inventory.NewServerResourceTemplate(
+		ToolsetMetadataRepos,
+		mcp.ResourceTemplate{
+			Name:        "repository_content_branch",
+			URITemplate: repositoryResourceBranchContentURITemplate.Raw(),
+			Description: t("RESOURCE_REPOSITORY_CONTENT_BRANCH_DESCRIPTION", "Repository Content for specific branch"),
+			Icons:       octicons.Icons("git-branch"),
+		},
+		repositoryResourceContentsHandlerFunc(repositoryResourceBranchContentURITemplate),
+	)
 }
 
-// GetRepositoryResourceCommitContent defines the resource template and handler for getting repository content for a commit.
-func GetRepositoryResourceCommitContent(getClient GetClientFn, getRawClient raw.GetRawClientFn, t translations.TranslationHelperFunc) (mcp.ResourceTemplate, server.ResourceTemplateHandlerFunc) {
-	return mcp.NewResourceTemplate(
-			"repo://{owner}/{repo}/sha/{sha}/contents{/path*}", // Resource template
-			t("RESOURCE_REPOSITORY_CONTENT_COMMIT_DESCRIPTION", "Repository Content for specific commit"),
-		),
-		RepositoryResourceContentsHandler(getClient, getRawClient)
+// GetRepositoryResourceCommitContent defines the resource template for getting repository content for a commit.
+func GetRepositoryResourceCommitContent(t translations.TranslationHelperFunc) inventory.ServerResourceTemplate {
+	return inventory.NewServerResourceTemplate(
+		ToolsetMetadataRepos,
+		mcp.ResourceTemplate{
+			Name:        "repository_content_commit",
+			URITemplate: repositoryResourceCommitContentURITemplate.Raw(),
+			Description: t("RESOURCE_REPOSITORY_CONTENT_COMMIT_DESCRIPTION", "Repository Content for specific commit"),
+			Icons:       octicons.Icons("git-commit"),
+		},
+		repositoryResourceContentsHandlerFunc(repositoryResourceCommitContentURITemplate),
+	)
 }
 
-// GetRepositoryResourceTagContent defines the resource template and handler for getting repository content for a tag.
-func GetRepositoryResourceTagContent(getClient GetClientFn, getRawClient raw.GetRawClientFn, t translations.TranslationHelperFunc) (mcp.ResourceTemplate, server.ResourceTemplateHandlerFunc) {
-	return mcp.NewResourceTemplate(
-			"repo://{owner}/{repo}/refs/tags/{tag}/contents{/path*}", // Resource template
-			t("RESOURCE_REPOSITORY_CONTENT_TAG_DESCRIPTION", "Repository Content for specific tag"),
-		),
-		RepositoryResourceContentsHandler(getClient, getRawClient)
+// GetRepositoryResourceTagContent defines the resource template for getting repository content for a tag.
+func GetRepositoryResourceTagContent(t translations.TranslationHelperFunc) inventory.ServerResourceTemplate {
+	return inventory.NewServerResourceTemplate(
+		ToolsetMetadataRepos,
+		mcp.ResourceTemplate{
+			Name:        "repository_content_tag",
+			URITemplate: repositoryResourceTagContentURITemplate.Raw(),
+			Description: t("RESOURCE_REPOSITORY_CONTENT_TAG_DESCRIPTION", "Repository Content for specific tag"),
+			Icons:       octicons.Icons("tag"),
+		},
+		repositoryResourceContentsHandlerFunc(repositoryResourceTagContentURITemplate),
+	)
 }
 
-// GetRepositoryResourcePrContent defines the resource template and handler for getting repository content for a pull request.
-func GetRepositoryResourcePrContent(getClient GetClientFn, getRawClient raw.GetRawClientFn, t translations.TranslationHelperFunc) (mcp.ResourceTemplate, server.ResourceTemplateHandlerFunc) {
-	return mcp.NewResourceTemplate(
-			"repo://{owner}/{repo}/refs/pull/{prNumber}/head/contents{/path*}", // Resource template
-			t("RESOURCE_REPOSITORY_CONTENT_PR_DESCRIPTION", "Repository Content for specific pull request"),
-		),
-		RepositoryResourceContentsHandler(getClient, getRawClient)
+// GetRepositoryResourcePrContent defines the resource template for getting repository content for a pull request.
+func GetRepositoryResourcePrContent(t translations.TranslationHelperFunc) inventory.ServerResourceTemplate {
+	return inventory.NewServerResourceTemplate(
+		ToolsetMetadataRepos,
+		mcp.ResourceTemplate{
+			Name:        "repository_content_pr",
+			URITemplate: repositoryResourcePrContentURITemplate.Raw(),
+			Description: t("RESOURCE_REPOSITORY_CONTENT_PR_DESCRIPTION", "Repository Content for specific pull request"),
+			Icons:       octicons.Icons("git-pull-request"),
+		},
+		repositoryResourceContentsHandlerFunc(repositoryResourcePrContentURITemplate),
+	)
+}
+
+// repositoryResourceContentsHandlerFunc returns a ResourceHandlerFunc that creates handlers on-demand.
+func repositoryResourceContentsHandlerFunc(resourceURITemplate *uritemplate.Template) inventory.ResourceHandlerFunc {
+	return func(_ any) mcp.ResourceHandler {
+		return RepositoryResourceContentsHandler(resourceURITemplate)
+	}
 }
 
 // RepositoryResourceContentsHandler returns a handler function for repository content requests.
-func RepositoryResourceContentsHandler(getClient GetClientFn, getRawClient raw.GetRawClientFn) func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-	return func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-		// the matcher will give []string with one element
-		// https://github.com/mark3labs/mcp-go/pull/54
-		o, ok := request.Params.Arguments["owner"].([]string)
-		if !ok || len(o) == 0 {
+// It retrieves ToolDependencies from the context at call time via MustDepsFromContext.
+func RepositoryResourceContentsHandler(resourceURITemplate *uritemplate.Template) mcp.ResourceHandler {
+	return func(ctx context.Context, request *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+		deps := MustDepsFromContext(ctx)
+		// Match the URI to extract parameters
+		uriValues := resourceURITemplate.Match(request.Params.URI)
+		if uriValues == nil {
+			return nil, fmt.Errorf("failed to match URI: %s", request.Params.URI)
+		}
+
+		// Extract required vars
+		owner := uriValues.Get("owner").String()
+		repo := uriValues.Get("repo").String()
+
+		if owner == "" {
 			return nil, errors.New("owner is required")
 		}
-		owner := o[0]
 
-		r, ok := request.Params.Arguments["repo"].([]string)
-		if !ok || len(r) == 0 {
+		if repo == "" {
 			return nil, errors.New("repo is required")
 		}
-		repo := r[0]
 
-		// path should be a joined list of the path parts
-		path := ""
-		p, ok := request.Params.Arguments["path"].([]string)
-		if ok {
-			path = strings.Join(p, "/")
+		pathValue := uriValues.Get("path")
+		pathComponents := pathValue.List()
+		var path string
+
+		if len(pathComponents) == 0 {
+			path = pathValue.String()
+		} else {
+			path = strings.Join(pathComponents, "/")
 		}
 
 		opts := &github.RepositoryContentGetOptions{}
 		rawOpts := &raw.ContentOpts{}
 
-		sha, ok := request.Params.Arguments["sha"].([]string)
-		if ok && len(sha) > 0 {
-			opts.Ref = sha[0]
-			rawOpts.SHA = sha[0]
+		sha := uriValues.Get("sha").String()
+		if sha != "" {
+			opts.Ref = sha
+			rawOpts.SHA = sha
 		}
 
-		branch, ok := request.Params.Arguments["branch"].([]string)
-		if ok && len(branch) > 0 {
-			opts.Ref = "refs/heads/" + branch[0]
-			rawOpts.Ref = "refs/heads/" + branch[0]
+		branch := uriValues.Get("branch").String()
+		if branch != "" {
+			opts.Ref = "refs/heads/" + branch
+			rawOpts.Ref = "refs/heads/" + branch
 		}
 
-		tag, ok := request.Params.Arguments["tag"].([]string)
-		if ok && len(tag) > 0 {
-			opts.Ref = "refs/tags/" + tag[0]
-			rawOpts.Ref = "refs/tags/" + tag[0]
+		tag := uriValues.Get("tag").String()
+		if tag != "" {
+			opts.Ref = "refs/tags/" + tag
+			rawOpts.Ref = "refs/tags/" + tag
 		}
-		prNumber, ok := request.Params.Arguments["prNumber"].([]string)
-		if ok && len(prNumber) > 0 {
+
+		prNumber := uriValues.Get("prNumber").String()
+		if prNumber != "" {
 			// fetch the PR from the API to get the latest commit and use SHA
-			githubClient, err := getClient(ctx)
+			githubClient, err := deps.GetClient(ctx)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get GitHub client: %w", err)
 			}
-			prNum, err := strconv.Atoi(prNumber[0])
+			prNum, err := strconv.Atoi(prNumber)
 			if err != nil {
 				return nil, fmt.Errorf("invalid pull request number: %w", err)
 			}
@@ -131,20 +182,21 @@ func RepositoryResourceContentsHandler(getClient GetClientFn, getRawClient raw.G
 		if path == "" || strings.HasSuffix(path, "/") {
 			return nil, fmt.Errorf("directories are not supported: %s", path)
 		}
-		rawClient, err := getRawClient(ctx)
+		rawClient, err := deps.GetRawClient(ctx)
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to get GitHub raw content client: %w", err)
 		}
 
 		resp, err := rawClient.GetRawContent(ctx, owner, repo, path, rawOpts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get raw content: %w", err)
+		}
 		defer func() {
 			_ = resp.Body.Close()
 		}()
 		// If the raw content is not found, we will fall back to the GitHub API (in case it is a directory)
 		switch {
-		case err != nil:
-			return nil, fmt.Errorf("failed to get raw content: %w", err)
 		case resp.StatusCode == http.StatusOK:
 			ext := filepath.Ext(path)
 			mimeType := resp.Header.Get("Content-Type")
@@ -161,19 +213,23 @@ func RepositoryResourceContentsHandler(getClient GetClientFn, getRawClient raw.G
 
 			switch {
 			case strings.HasPrefix(mimeType, "text"), strings.HasPrefix(mimeType, "application"):
-				return []mcp.ResourceContents{
-					mcp.TextResourceContents{
-						URI:      request.Params.URI,
-						MIMEType: mimeType,
-						Text:     string(content),
+				return &mcp.ReadResourceResult{
+					Contents: []*mcp.ResourceContents{
+						{
+							URI:      request.Params.URI,
+							MIMEType: mimeType,
+							Text:     string(content),
+						},
 					},
 				}, nil
 			default:
-				return []mcp.ResourceContents{
-					mcp.BlobResourceContents{
-						URI:      request.Params.URI,
-						MIMEType: mimeType,
-						Blob:     base64.StdEncoding.EncodeToString(content),
+				return &mcp.ReadResourceResult{
+					Contents: []*mcp.ResourceContents{
+						{
+							URI:      request.Params.URI,
+							MIMEType: mimeType,
+							Blob:     content,
+						},
 					},
 				}, nil
 			}
@@ -188,5 +244,56 @@ func RepositoryResourceContentsHandler(getClient GetClientFn, getRawClient raw.G
 			// This should be unreachable because GetContents should return an error if neither file nor directory content is found.
 			return nil, errors.New("404 Not Found")
 		}
+	}
+}
+
+// expandRepoResourceURI builds a resource URI using the appropriate URI template
+// based on the provided parameters (sha, ref, or default).
+func expandRepoResourceURI(owner, repo, sha, ref string, pathParts []string) (string, error) {
+	baseValues := uritemplate.Values{
+		"owner": uritemplate.String(owner),
+		"repo":  uritemplate.String(repo),
+		"path":  uritemplate.List(pathParts...),
+	}
+
+	switch {
+	case sha != "":
+		baseValues["sha"] = uritemplate.String(sha)
+		return repositoryResourceCommitContentURITemplate.Expand(baseValues)
+
+	case ref != "":
+		// Parse ref to determine which template to use
+		switch {
+		case strings.HasPrefix(ref, "refs/heads/"):
+			branch := strings.TrimPrefix(ref, "refs/heads/")
+			baseValues["branch"] = uritemplate.String(branch)
+			return repositoryResourceBranchContentURITemplate.Expand(baseValues)
+
+		case strings.HasPrefix(ref, "refs/tags/"):
+			tag := strings.TrimPrefix(ref, "refs/tags/")
+			baseValues["tag"] = uritemplate.String(tag)
+			return repositoryResourceTagContentURITemplate.Expand(baseValues)
+
+		case strings.HasPrefix(ref, "refs/pull/") && strings.HasSuffix(ref, "/head"):
+			// Extract PR number from "refs/pull/{number}/head"
+			prPart := strings.TrimPrefix(ref, "refs/pull/")
+			prNumber := strings.TrimSuffix(prPart, "/head")
+			baseValues["prNumber"] = uritemplate.String(prNumber)
+			return repositoryResourcePrContentURITemplate.Expand(baseValues)
+
+		case looksLikeSHA(ref):
+			// ref is actually a SHA (e.g., from resolveGitReference)
+			baseValues["sha"] = uritemplate.String(ref)
+			return repositoryResourceCommitContentURITemplate.Expand(baseValues)
+
+		default:
+			// For other refs (like a branch name without refs/heads/ prefix),
+			// treat it as a branch
+			baseValues["branch"] = uritemplate.String(ref)
+			return repositoryResourceBranchContentURITemplate.Expand(baseValues)
+		}
+
+	default:
+		return repositoryResourceContentURITemplate.Expand(baseValues)
 	}
 }

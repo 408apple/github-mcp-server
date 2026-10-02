@@ -1,21 +1,25 @@
 {
   "annotations": {
-    "title": "Add sub-issue",
-    "readOnlyHint": false
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true,
+    "readOnlyHint": false,
+    "title": "Add Sub-Issue"
   },
-  "description": "Add a sub-issue to a parent issue in a GitHub repository.",
+  "description": "Add a sub-issue to a parent issue.",
   "inputSchema": {
     "properties": {
       "issue_number": {
-        "description": "The number of the parent issue",
+        "description": "The parent issue number",
+        "minimum": 1,
         "type": "number"
       },
       "owner": {
-        "description": "Repository owner",
+        "description": "Repository owner (username or organization)",
         "type": "string"
       },
       "replace_parent": {
-        "description": "When true, replaces the sub-issue's current parent issue",
+        "description": "If true, reparent the sub-issue if it already has a parent",
         "type": "boolean"
       },
       "repo": {

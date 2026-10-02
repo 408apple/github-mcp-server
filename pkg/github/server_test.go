@@ -5,48 +5,140 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/github/github-mcp-server/pkg/inventory"
+	"github.com/github/github-mcp-server/pkg/lockdown"
+	"github.com/github/github-mcp-server/pkg/observability"
+	"github.com/github/github-mcp-server/pkg/observability/metrics"
 	"github.com/github/github-mcp-server/pkg/raw"
-	"github.com/google/go-github/v74/github"
+	"github.com/github/github-mcp-server/pkg/translations"
+	gogithub "github.com/google/go-github/v89/github"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/shurcooL/githubv4"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func stubGetClientFn(client *github.Client) GetClientFn {
-	return func(_ context.Context) (*github.Client, error) {
-		return client, nil
+// stubDeps is a test helper that implements ToolDependencies with configurable behavior.
+// Use this when you need to test error paths or when you need closure-based client creation.
+type stubDeps struct {
+	clientFn    func(context.Context) (*gogithub.Client, error)
+	gqlClientFn func(context.Context) (*githubv4.Client, error)
+	rawClientFn func(context.Context) (*raw.Client, error)
+
+	repoAccessCache   *lockdown.RepoAccessCache
+	t                 translations.TranslationHelperFunc
+	flags             FeatureFlags
+	contentWindowSize int
+	obsv              observability.Exporters
+}
+
+func (s stubDeps) GetClient(ctx context.Context) (*gogithub.Client, error) {
+	if s.clientFn != nil {
+		return s.clientFn(ctx)
+	}
+	return nil, nil
+}
+
+func (s stubDeps) GetGQLClient(ctx context.Context) (*githubv4.Client, error) {
+	if s.gqlClientFn != nil {
+		return s.gqlClientFn(ctx)
+	}
+	return nil, nil
+}
+
+func (s stubDeps) GetRawClient(ctx context.Context) (*raw.Client, error) {
+	if s.rawClientFn != nil {
+		return s.rawClientFn(ctx)
+	}
+	return nil, nil
+}
+
+func (s stubDeps) GetRepoAccessCache(_ context.Context) (*lockdown.RepoAccessCache, error) {
+	return s.repoAccessCache, nil
+}
+func (s stubDeps) GetT() translations.TranslationHelperFunc { return s.t }
+func (s stubDeps) GetFlags(_ context.Context) FeatureFlags  { return s.flags }
+func (s stubDeps) GetContentWindowSize() int                { return s.contentWindowSize }
+func (s stubDeps) IsFeatureEnabled(_ context.Context, _ string) bool {
+	return false
+}
+func (s stubDeps) Logger(_ context.Context) *slog.Logger {
+	return s.obsv.Logger()
+}
+func (s stubDeps) Metrics(ctx context.Context) metrics.Metrics {
+	return s.obsv.Metrics(ctx)
+}
+
+// Helper functions to create stub client functions for error testing
+
+// stubExporters returns a discard-logger + noop-metrics Exporters for tests.
+func stubExporters() observability.Exporters {
+	obs, _ := observability.NewExporters(slog.New(slog.DiscardHandler), metrics.NewNoopMetrics())
+	return obs
+}
+
+func stubClientFnFromHTTP(t *testing.T, httpClient *http.Client) func(context.Context) (*gogithub.Client, error) {
+	t.Helper()
+	return func(_ context.Context) (*gogithub.Client, error) {
+		return mustNewGHClient(t, httpClient), nil
 	}
 }
 
-func stubGetClientFromHTTPFn(client *http.Client) GetClientFn {
-	return func(_ context.Context) (*github.Client, error) {
-		return github.NewClient(client), nil
+func stubClientFnErr(errMsg string) func(context.Context) (*gogithub.Client, error) {
+	return func(_ context.Context) (*gogithub.Client, error) {
+		return nil, errors.New(errMsg)
 	}
 }
 
-func stubGetClientFnErr(err string) GetClientFn {
-	return func(_ context.Context) (*github.Client, error) {
-		return nil, errors.New(err)
-	}
-}
-
-func stubGetGQLClientFn(client *githubv4.Client) GetGQLClientFn {
+func stubGQLClientFnErr(errMsg string) func(context.Context) (*githubv4.Client, error) {
 	return func(_ context.Context) (*githubv4.Client, error) {
-		return client, nil
+		return nil, errors.New(errMsg)
 	}
 }
 
-func stubGetRawClientFn(client *raw.Client) raw.GetRawClientFn {
-	return func(_ context.Context) (*raw.Client, error) {
-		return client, nil
+func stubRepoAccessCache(restClient *gogithub.Client, ttl time.Duration) *lockdown.RepoAccessCache {
+	cacheName := fmt.Sprintf("repo-access-cache-test-%d", time.Now().UnixNano())
+	return lockdown.NewRepoAccessCache(
+		githubv4.NewClient(newRepoAccessHTTPClient()),
+		restClient,
+		lockdown.WithTTL(ttl),
+		lockdown.WithCacheName(cacheName),
+	)
+}
+
+func mockRESTPermissionServer(t *testing.T, defaultPerm string, overrides map[string]string) *gogithub.Client {
+	t.Helper()
+	return mustNewGHClient(t, MockHTTPClientWithHandler(func(w http.ResponseWriter, r *http.Request) {
+		perm := defaultPerm
+		for user, p := range overrides {
+			if strings.Contains(r.URL.Path, "/collaborators/"+user+"/") {
+				perm = p
+				break
+			}
+		}
+		resp := gogithub.RepositoryPermissionLevel{
+			Permission: gogithub.Ptr(perm),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+}
+
+func stubFeatureFlags(enabledFlags map[string]bool) FeatureFlags {
+	return FeatureFlags{
+		LockdownMode: enabledFlags["lockdown-mode"],
 	}
 }
 
 func badRequestHandler(msg string) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		structuredErrorResponse := github.ErrorResponse{
+		structuredErrorResponse := gogithub.ErrorResponse{
 			Message: msg,
 		}
 
@@ -59,504 +151,317 @@ func badRequestHandler(msg string) http.HandlerFunc {
 	}
 }
 
-func Test_IsAcceptedError(t *testing.T) {
+// TestNewMCPServer_CreatesSuccessfully verifies that the server can be created
+// with the deps injection middleware properly configured.
+func TestNewMCPServer_CreatesSuccessfully(t *testing.T) {
+	t.Parallel()
+
+	// Create a minimal server configuration
+	cfg := MCPServerConfig{
+		Version:           "test",
+		Host:              "", // defaults to github.com
+		Token:             "test-token",
+		EnabledToolsets:   []string{"context"},
+		ReadOnly:          false,
+		Translator:        translations.NullTranslationHelper,
+		ContentWindowSize: 5000,
+		LockdownMode:      false,
+	}
+
+	deps := stubDeps{obsv: stubExporters()}
+
+	// Build inventory
+	inv, err := NewInventory(cfg.Translator).
+		WithDeprecatedAliases(DeprecatedToolAliases).
+		WithToolsets(cfg.EnabledToolsets).
+		Build()
+
+	require.NoError(t, err, "expected inventory build to succeed")
+
+	// Create the server
+	server, err := NewMCPServer(context.Background(), &cfg, deps, inv)
+	require.NoError(t, err, "expected server creation to succeed")
+	require.NotNil(t, server, "expected server to be non-nil")
+
+	// The fact that the server was created successfully indicates that:
+	// 1. The deps injection middleware is properly added
+	// 2. Tools can be registered without panicking
+	//
+	// If the middleware wasn't properly added, tool calls would panic with
+	// "ToolDependencies not found in context" when executed.
+	//
+	// The actual middleware functionality and tool execution with ContextWithDeps
+	// is already tested in pkg/github/*_test.go.
+}
+
+func TestFeatureStateMiddlewareCachesHandlerChecks(t *testing.T) {
+	var calls int
+	checker := func(_ context.Context, flag string) (bool, error) {
+		calls++
+		return flag == "enabled", nil
+	}
+	inv, err := NewInventory(translations.NullTranslationHelper).
+		WithFeatureChecker(checker).
+		Build()
+	require.NoError(t, err)
+
+	next := func(ctx context.Context, _ string, _ mcp.Request) (mcp.Result, error) {
+		assert.True(t, inventory.ResolveFeature(ctx, nil, "enabled"))
+		assert.True(t, inventory.ResolveFeature(ctx, nil, "enabled"))
+		return nil, nil
+	}
+	_, err = injectFeatureStateMiddleware(inv)(next)(context.Background(), "tools/call", nil)
+	require.NoError(t, err)
+	assert.Equal(t, 1, calls)
+}
+
+// advertisedServerCapabilities connects an in-memory client to the given server
+// and returns the capabilities the server advertised during initialization.
+func advertisedServerCapabilities(t *testing.T, server *mcp.Server) *mcp.ServerCapabilities {
+	t.Helper()
+
+	ctx := context.Background()
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err, "expected server to connect")
+	t.Cleanup(func() { _ = serverSession.Close() })
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err, "expected client to connect")
+	t.Cleanup(func() { _ = clientSession.Close() })
+
+	result := clientSession.InitializeResult()
+	require.NotNil(t, result, "expected an initialize result")
+	return result.Capabilities
+}
+
+// TestNewMCPServer_AdvertisedCapabilities locks in the capability contract set by
+// NewMCPServer: tools, prompts, and resources are advertised without list-changed
+// notifications (the server has a static item set and never emits list_changed),
+// the deprecated logging capability is not advertised, and the inferred
+// completions capability is preserved. This is asserted for both the stdio path
+// (full inventory, items present) and the HTTP path (inventory emptied for the
+// discovery/initialize request), which share the same NewMCPServer entry point.
+func TestNewMCPServer_AdvertisedCapabilities(t *testing.T) {
+	t.Parallel()
+
+	cfg := MCPServerConfig{
+		Version:           "test",
+		Token:             "test-token",
+		EnabledToolsets:   []string{"context"},
+		Translator:        translations.NullTranslationHelper,
+		ContentWindowSize: 5000,
+	}
+
+	deps := stubDeps{obsv: stubExporters()}
+
+	fullInventory, err := NewInventory(cfg.Translator).
+		WithDeprecatedAliases(DeprecatedToolAliases).
+		WithToolsets(cfg.EnabledToolsets).
+		Build()
+	require.NoError(t, err, "expected inventory build to succeed")
+
+	tests := []struct {
+		name string
+		inv  *inventory.Inventory
+	}{
+		{
+			name: "stdio path with registered items",
+			inv:  fullInventory,
+		},
+		{
+			// The HTTP handler registers only the items relevant to a request;
+			// for initialize/discover that is nothing, so capabilities must come
+			// from the explicit declaration rather than being inferred from items.
+			name: "http path with no registered items for discovery",
+			inv:  fullInventory.ForMCPRequest(inventory.MCPMethodDiscover, ""),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server, err := NewMCPServer(context.Background(), &cfg, deps, tt.inv)
+			require.NoError(t, err, "expected server creation to succeed")
+
+			caps := advertisedServerCapabilities(t, server)
+
+			require.NotNil(t, caps.Tools, "tools capability should be advertised")
+			assert.False(t, caps.Tools.ListChanged, "tools list-changed must not be advertised")
+
+			require.NotNil(t, caps.Prompts, "prompts capability should be advertised")
+			assert.False(t, caps.Prompts.ListChanged, "prompts list-changed must not be advertised")
+
+			require.NotNil(t, caps.Resources, "resources capability should be advertised")
+			assert.False(t, caps.Resources.ListChanged, "resources list-changed must not be advertised")
+			assert.False(t, caps.Resources.Subscribe, "resources subscribe must not be advertised")
+
+			assert.NotNil(t, caps.Completions, "completions capability should be preserved")
+			// Intentionally asserting the deprecated logging capability is absent.
+			assert.Nil(t, caps.Logging, "deprecated logging capability should not be advertised") //nolint:staticcheck // SA1019: verifying the deprecated capability is not advertised
+		})
+	}
+}
+
+// TestNewServer_NameAndTitleViaTranslation verifies that server name and title
+// can be overridden via the translation helper (GITHUB_MCP_SERVER_NAME /
+// GITHUB_MCP_SERVER_TITLE env vars or github-mcp-server-config.json) and
+// fall back to sensible defaults when not overridden.
+func TestNewServer_NameAndTitleViaTranslation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		translator    translations.TranslationHelperFunc
+		expectedName  string
+		expectedTitle string
+	}{
+		{
+			name:          "defaults when using NullTranslationHelper",
+			translator:    translations.NullTranslationHelper,
+			expectedName:  "github-mcp-server",
+			expectedTitle: "GitHub MCP Server",
+		},
+		{
+			name: "custom name and title via translator",
+			translator: func(key, defaultValue string) string {
+				switch key {
+				case "SERVER_NAME":
+					return "my-github-server"
+				case "SERVER_TITLE":
+					return "My GitHub MCP Server"
+				default:
+					return defaultValue
+				}
+			},
+			expectedName:  "my-github-server",
+			expectedTitle: "My GitHub MCP Server",
+		},
+		{
+			name: "custom name only via translator",
+			translator: func(key, defaultValue string) string {
+				if key == "SERVER_NAME" {
+					return "ghes-server"
+				}
+				return defaultValue
+			},
+			expectedName:  "ghes-server",
+			expectedTitle: "GitHub MCP Server",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := NewServer("v1.0.0", tt.translator("SERVER_NAME", "github-mcp-server"), tt.translator("SERVER_TITLE", "GitHub MCP Server"), nil)
+			require.NotNil(t, srv)
+
+			// Connect a client to retrieve the initialize result and verify ServerInfo.
+			st, ct := mcp.NewInMemoryTransports()
+			client := mcp.NewClient(&mcp.Implementation{Name: "test-client"}, nil)
+
+			type clientResult struct {
+				result *mcp.InitializeResult
+				err    error
+			}
+			clientResultCh := make(chan clientResult, 1)
+			go func() {
+				cs, err := client.Connect(context.Background(), ct, nil)
+				if err != nil {
+					clientResultCh <- clientResult{err: err}
+					return
+				}
+				t.Cleanup(func() { _ = cs.Close() })
+				clientResultCh <- clientResult{result: cs.InitializeResult()}
+			}()
+
+			ss, err := srv.Connect(context.Background(), st, nil)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = ss.Close() })
+
+			got := <-clientResultCh
+			require.NoError(t, got.err)
+			require.NotNil(t, got.result)
+			require.NotNil(t, got.result.ServerInfo)
+			assert.Equal(t, tt.expectedName, got.result.ServerInfo.Name)
+			assert.Equal(t, tt.expectedTitle, got.result.ServerInfo.Title)
+		})
+	}
+}
+
+// TestResolveEnabledToolsets verifies the toolset resolution logic.
+func TestResolveEnabledToolsets(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name           string
-		err            error
-		expectAccepted bool
+		cfg            MCPServerConfig
+		expectedResult []string
 	}{
 		{
-			name:           "github AcceptedError",
-			err:            &github.AcceptedError{},
-			expectAccepted: true,
+			name: "nil toolsets and no tools - use defaults",
+			cfg: MCPServerConfig{
+				EnabledToolsets: nil,
+				EnabledTools:    nil,
+			},
+			expectedResult: nil, // nil means "use defaults"
 		},
 		{
-			name:           "regular error",
-			err:            fmt.Errorf("some other error"),
-			expectAccepted: false,
+			name: "explicit toolsets",
+			cfg: MCPServerConfig{
+				EnabledToolsets: []string{"repos", "issues"},
+			},
+			expectedResult: []string{"repos", "issues"},
 		},
 		{
-			name:           "nil error",
-			err:            nil,
-			expectAccepted: false,
+			name: "empty toolsets - disable all",
+			cfg: MCPServerConfig{
+				EnabledToolsets: []string{},
+			},
+			expectedResult: []string{},
 		},
 		{
-			name:           "wrapped AcceptedError",
-			err:            fmt.Errorf("wrapped: %w", &github.AcceptedError{}),
-			expectAccepted: true,
+			name: "specific tools without toolsets - no default toolsets",
+			cfg: MCPServerConfig{
+				EnabledToolsets: nil,
+				EnabledTools:    []string{"get_me"},
+			},
+			expectedResult: []string{}, // empty slice when tools specified but no toolsets
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := isAcceptedError(tc.err)
-			assert.Equal(t, tc.expectAccepted, result)
+			result := ResolvedEnabledToolsets(tc.cfg.EnabledToolsets, tc.cfg.EnabledTools)
+			assert.Equal(t, tc.expectedResult, result)
 		})
 	}
 }
 
-func Test_RequiredStringParam(t *testing.T) {
-	tests := []struct {
-		name        string
-		params      map[string]interface{}
-		paramName   string
-		expected    string
-		expectError bool
-	}{
-		{
-			name:        "valid string parameter",
-			params:      map[string]interface{}{"name": "test-value"},
-			paramName:   "name",
-			expected:    "test-value",
-			expectError: false,
-		},
-		{
-			name:        "missing parameter",
-			params:      map[string]interface{}{},
-			paramName:   "name",
-			expected:    "",
-			expectError: true,
-		},
-		{
-			name:        "empty string parameter",
-			params:      map[string]interface{}{"name": ""},
-			paramName:   "name",
-			expected:    "",
-			expectError: true,
-		},
-		{
-			name:        "wrong type parameter",
-			params:      map[string]interface{}{"name": 123},
-			paramName:   "name",
-			expected:    "",
-			expectError: true,
-		},
+func TestCompletionsHandler_RejectsMissingRef(t *testing.T) {
+	getClient := func(_ context.Context) (*gogithub.Client, error) {
+		return &gogithub.Client{}, nil
 	}
+	handler := CompletionsHandler(getClient)
 
+	tests := []struct {
+		name string
+		req  *mcp.CompleteRequest
+	}{
+		{name: "nil request", req: nil},
+		{name: "nil params", req: &mcp.CompleteRequest{}},
+		{name: "nil ref", req: &mcp.CompleteRequest{Params: &mcp.CompleteParams{}}},
+	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			request := createMCPRequest(tc.params)
-			result, err := RequiredParam[string](request, tc.paramName)
-
-			if tc.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expected, result)
-			}
-		})
-	}
-}
-
-func Test_OptionalStringParam(t *testing.T) {
-	tests := []struct {
-		name        string
-		params      map[string]interface{}
-		paramName   string
-		expected    string
-		expectError bool
-	}{
-		{
-			name:        "valid string parameter",
-			params:      map[string]interface{}{"name": "test-value"},
-			paramName:   "name",
-			expected:    "test-value",
-			expectError: false,
-		},
-		{
-			name:        "missing parameter",
-			params:      map[string]interface{}{},
-			paramName:   "name",
-			expected:    "",
-			expectError: false,
-		},
-		{
-			name:        "empty string parameter",
-			params:      map[string]interface{}{"name": ""},
-			paramName:   "name",
-			expected:    "",
-			expectError: false,
-		},
-		{
-			name:        "wrong type parameter",
-			params:      map[string]interface{}{"name": 123},
-			paramName:   "name",
-			expected:    "",
-			expectError: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			request := createMCPRequest(tc.params)
-			result, err := OptionalParam[string](request, tc.paramName)
-
-			if tc.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expected, result)
-			}
-		})
-	}
-}
-
-func Test_RequiredInt(t *testing.T) {
-	tests := []struct {
-		name        string
-		params      map[string]interface{}
-		paramName   string
-		expected    int
-		expectError bool
-	}{
-		{
-			name:        "valid number parameter",
-			params:      map[string]interface{}{"count": float64(42)},
-			paramName:   "count",
-			expected:    42,
-			expectError: false,
-		},
-		{
-			name:        "missing parameter",
-			params:      map[string]interface{}{},
-			paramName:   "count",
-			expected:    0,
-			expectError: true,
-		},
-		{
-			name:        "wrong type parameter",
-			params:      map[string]interface{}{"count": "not-a-number"},
-			paramName:   "count",
-			expected:    0,
-			expectError: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			request := createMCPRequest(tc.params)
-			result, err := RequiredInt(request, tc.paramName)
-
-			if tc.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expected, result)
-			}
-		})
-	}
-}
-func Test_OptionalIntParam(t *testing.T) {
-	tests := []struct {
-		name        string
-		params      map[string]interface{}
-		paramName   string
-		expected    int
-		expectError bool
-	}{
-		{
-			name:        "valid number parameter",
-			params:      map[string]interface{}{"count": float64(42)},
-			paramName:   "count",
-			expected:    42,
-			expectError: false,
-		},
-		{
-			name:        "missing parameter",
-			params:      map[string]interface{}{},
-			paramName:   "count",
-			expected:    0,
-			expectError: false,
-		},
-		{
-			name:        "zero value",
-			params:      map[string]interface{}{"count": float64(0)},
-			paramName:   "count",
-			expected:    0,
-			expectError: false,
-		},
-		{
-			name:        "wrong type parameter",
-			params:      map[string]interface{}{"count": "not-a-number"},
-			paramName:   "count",
-			expected:    0,
-			expectError: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			request := createMCPRequest(tc.params)
-			result, err := OptionalIntParam(request, tc.paramName)
-
-			if tc.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expected, result)
-			}
-		})
-	}
-}
-
-func Test_OptionalNumberParamWithDefault(t *testing.T) {
-	tests := []struct {
-		name        string
-		params      map[string]interface{}
-		paramName   string
-		defaultVal  int
-		expected    int
-		expectError bool
-	}{
-		{
-			name:        "valid number parameter",
-			params:      map[string]interface{}{"count": float64(42)},
-			paramName:   "count",
-			defaultVal:  10,
-			expected:    42,
-			expectError: false,
-		},
-		{
-			name:        "missing parameter",
-			params:      map[string]interface{}{},
-			paramName:   "count",
-			defaultVal:  10,
-			expected:    10,
-			expectError: false,
-		},
-		{
-			name:        "zero value",
-			params:      map[string]interface{}{"count": float64(0)},
-			paramName:   "count",
-			defaultVal:  10,
-			expected:    10,
-			expectError: false,
-		},
-		{
-			name:        "wrong type parameter",
-			params:      map[string]interface{}{"count": "not-a-number"},
-			paramName:   "count",
-			defaultVal:  10,
-			expected:    0,
-			expectError: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			request := createMCPRequest(tc.params)
-			result, err := OptionalIntParamWithDefault(request, tc.paramName, tc.defaultVal)
-
-			if tc.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expected, result)
-			}
-		})
-	}
-}
-
-func Test_OptionalBooleanParam(t *testing.T) {
-	tests := []struct {
-		name        string
-		params      map[string]interface{}
-		paramName   string
-		expected    bool
-		expectError bool
-	}{
-		{
-			name:        "true value",
-			params:      map[string]interface{}{"flag": true},
-			paramName:   "flag",
-			expected:    true,
-			expectError: false,
-		},
-		{
-			name:        "false value",
-			params:      map[string]interface{}{"flag": false},
-			paramName:   "flag",
-			expected:    false,
-			expectError: false,
-		},
-		{
-			name:        "missing parameter",
-			params:      map[string]interface{}{},
-			paramName:   "flag",
-			expected:    false,
-			expectError: false,
-		},
-		{
-			name:        "wrong type parameter",
-			params:      map[string]interface{}{"flag": "not-a-boolean"},
-			paramName:   "flag",
-			expected:    false,
-			expectError: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			request := createMCPRequest(tc.params)
-			result, err := OptionalParam[bool](request, tc.paramName)
-
-			if tc.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expected, result)
-			}
-		})
-	}
-}
-
-func TestOptionalStringArrayParam(t *testing.T) {
-	tests := []struct {
-		name        string
-		params      map[string]interface{}
-		paramName   string
-		expected    []string
-		expectError bool
-	}{
-		{
-			name:        "parameter not in request",
-			params:      map[string]any{},
-			paramName:   "flag",
-			expected:    []string{},
-			expectError: false,
-		},
-		{
-			name: "valid any array parameter",
-			params: map[string]any{
-				"flag": []any{"v1", "v2"},
-			},
-			paramName:   "flag",
-			expected:    []string{"v1", "v2"},
-			expectError: false,
-		},
-		{
-			name: "valid string array parameter",
-			params: map[string]any{
-				"flag": []string{"v1", "v2"},
-			},
-			paramName:   "flag",
-			expected:    []string{"v1", "v2"},
-			expectError: false,
-		},
-		{
-			name: "wrong type parameter",
-			params: map[string]any{
-				"flag": 1,
-			},
-			paramName:   "flag",
-			expected:    []string{},
-			expectError: true,
-		},
-		{
-			name: "wrong slice type parameter",
-			params: map[string]any{
-				"flag": []any{"foo", 2},
-			},
-			paramName:   "flag",
-			expected:    []string{},
-			expectError: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			request := createMCPRequest(tc.params)
-			result, err := OptionalStringArrayParam(request, tc.paramName)
-
-			if tc.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expected, result)
-			}
-		})
-	}
-}
-
-func TestOptionalPaginationParams(t *testing.T) {
-	tests := []struct {
-		name        string
-		params      map[string]any
-		expected    PaginationParams
-		expectError bool
-	}{
-		{
-			name:   "no pagination parameters, default values",
-			params: map[string]any{},
-			expected: PaginationParams{
-				Page:    1,
-				PerPage: 30,
-			},
-			expectError: false,
-		},
-		{
-			name: "page parameter, default perPage",
-			params: map[string]any{
-				"page": float64(2),
-			},
-			expected: PaginationParams{
-				Page:    2,
-				PerPage: 30,
-			},
-			expectError: false,
-		},
-		{
-			name: "perPage parameter, default page",
-			params: map[string]any{
-				"perPage": float64(50),
-			},
-			expected: PaginationParams{
-				Page:    1,
-				PerPage: 50,
-			},
-			expectError: false,
-		},
-		{
-			name: "page and perPage parameters",
-			params: map[string]any{
-				"page":    float64(2),
-				"perPage": float64(50),
-			},
-			expected: PaginationParams{
-				Page:    2,
-				PerPage: 50,
-			},
-			expectError: false,
-		},
-		{
-			name: "invalid page parameter",
-			params: map[string]any{
-				"page": "not-a-number",
-			},
-			expected:    PaginationParams{},
-			expectError: true,
-		},
-		{
-			name: "invalid perPage parameter",
-			params: map[string]any{
-				"perPage": "not-a-number",
-			},
-			expected:    PaginationParams{},
-			expectError: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			request := createMCPRequest(tc.params)
-			result, err := OptionalPaginationParams(request)
-
-			if tc.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expected, result)
-			}
+			result, err := handler(context.Background(), tc.req)
+			require.Error(t, err)
+			assert.Nil(t, result)
+			assert.Contains(t, err.Error(), "missing required parameter: ref")
 		})
 	}
 }

@@ -1,7 +1,8 @@
 {
   "annotations": {
-    "title": "Get tag details",
-    "readOnlyHint": true
+    "idempotentHint": false,
+    "readOnlyHint": true,
+    "title": "Get tag details"
   },
   "description": "Get details about a specific git tag in a GitHub repository",
   "inputSchema": {

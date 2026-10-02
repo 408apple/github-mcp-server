@@ -8,154 +8,220 @@ import (
 	"net/http"
 
 	ghErrors "github.com/github/github-mcp-server/pkg/errors"
+	"github.com/github/github-mcp-server/pkg/ifc"
+	"github.com/github/github-mcp-server/pkg/inventory"
+	"github.com/github/github-mcp-server/pkg/scopes"
 	"github.com/github/github-mcp-server/pkg/translations"
-	"github.com/google/go-github/v74/github"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/github/github-mcp-server/pkg/utils"
+	"github.com/google/go-github/v89/github"
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func GetDependabotAlert(getClient GetClientFn, t translations.TranslationHelperFunc) (tool mcp.Tool, handler server.ToolHandlerFunc) {
-	return mcp.NewTool(
-			"get_dependabot_alert",
-			mcp.WithDescription(t("TOOL_GET_DEPENDABOT_ALERT_DESCRIPTION", "Get details of a specific dependabot alert in a GitHub repository.")),
-			mcp.WithToolAnnotation(mcp.ToolAnnotation{
+func GetDependabotAlert(t translations.TranslationHelperFunc) inventory.ServerTool {
+	return NewTool(
+		ToolsetMetadataDependabot,
+		mcp.Tool{
+			Name:        "get_dependabot_alert",
+			Description: t("TOOL_GET_DEPENDABOT_ALERT_DESCRIPTION", "Get details of a specific dependabot alert in a GitHub repository."),
+			Annotations: &mcp.ToolAnnotations{
 				Title:        t("TOOL_GET_DEPENDABOT_ALERT_USER_TITLE", "Get dependabot alert"),
-				ReadOnlyHint: ToBoolPtr(true),
-			}),
-			mcp.WithString("owner",
-				mcp.Required(),
-				mcp.Description("The owner of the repository."),
-			),
-			mcp.WithString("repo",
-				mcp.Required(),
-				mcp.Description("The name of the repository."),
-			),
-			mcp.WithNumber("alertNumber",
-				mcp.Required(),
-				mcp.Description("The number of the alert."),
-			),
-		),
-		func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			owner, err := RequiredParam[string](request, "owner")
+				ReadOnlyHint: true,
+			},
+			InputSchema: &jsonschema.Schema{
+				Type: "object",
+				Properties: map[string]*jsonschema.Schema{
+					"owner": {
+						Type:        "string",
+						Description: "The owner of the repository.",
+					},
+					"repo": {
+						Type:        "string",
+						Description: "The name of the repository.",
+					},
+					"alertNumber": {
+						Type:        "number",
+						Description: "The number of the alert.",
+					},
+				},
+				Required: []string{"owner", "repo", "alertNumber"},
+			},
+		},
+		scopes.RequireAll(scopes.SecurityEvents),
+		func(ctx context.Context, deps ToolDependencies, _ *mcp.CallToolRequest, args map[string]any) (*mcp.CallToolResult, any, error) {
+			owner, err := RequiredParam[string](args, "owner")
 			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
+				return utils.NewToolResultError(err.Error()), nil, nil
 			}
-			repo, err := RequiredParam[string](request, "repo")
+			repo, err := RequiredParam[string](args, "repo")
 			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
+				return utils.NewToolResultError(err.Error()), nil, nil
 			}
-			alertNumber, err := RequiredInt(request, "alertNumber")
+			alertNumber, err := RequiredInt(args, "alertNumber")
 			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
+				return utils.NewToolResultError(err.Error()), nil, nil
 			}
 
-			client, err := getClient(ctx)
+			client, err := deps.GetClient(ctx)
 			if err != nil {
-				return nil, fmt.Errorf("failed to get GitHub client: %w", err)
+				return utils.NewToolResultErrorFromErr("failed to get GitHub client", err), nil, err
 			}
 
 			alert, resp, err := client.Dependabot.GetRepoAlert(ctx, owner, repo, alertNumber)
 			if err != nil {
 				return ghErrors.NewGitHubAPIErrorResponse(ctx,
-					fmt.Sprintf("failed to get alert with number '%d'", alertNumber),
+					dependabotErrMsg(fmt.Sprintf("failed to get alert with number '%d'", alertNumber), owner, repo, resp),
 					resp,
 					err,
-				), nil
+				), nil, nil
 			}
 			defer func() { _ = resp.Body.Close() }()
 
 			if resp.StatusCode != http.StatusOK {
 				body, err := io.ReadAll(resp.Body)
 				if err != nil {
-					return nil, fmt.Errorf("failed to read response body: %w", err)
+					return utils.NewToolResultErrorFromErr("failed to read response body", err), nil, err
 				}
-				return mcp.NewToolResultError(fmt.Sprintf("failed to get alert: %s", string(body))), nil
+				return ghErrors.NewGitHubAPIStatusErrorResponse(ctx, "failed to get alert", resp, body), nil, nil
 			}
 
 			r, err := json.Marshal(alert)
 			if err != nil {
-				return nil, fmt.Errorf("failed to marshal alert: %w", err)
+				return utils.NewToolResultErrorFromErr("failed to marshal alert", err), nil, err
 			}
 
-			return mcp.NewToolResultText(string(r)), nil
-		}
+			result := utils.NewToolResultText(string(r))
+			// Dependabot alerts are access-restricted regardless of repo
+			// visibility and embed attacker-influenceable advisory text, so the
+			// label is always private-untrusted.
+			result = attachStaticIFCLabel(ctx, deps, result, ifc.LabelSecurityAlert())
+			return result, nil, nil
+		},
+	)
 }
 
-func ListDependabotAlerts(getClient GetClientFn, t translations.TranslationHelperFunc) (tool mcp.Tool, handler server.ToolHandlerFunc) {
-	return mcp.NewTool(
-			"list_dependabot_alerts",
-			mcp.WithDescription(t("TOOL_LIST_DEPENDABOT_ALERTS_DESCRIPTION", "List dependabot alerts in a GitHub repository.")),
-			mcp.WithToolAnnotation(mcp.ToolAnnotation{
+func ListDependabotAlerts(t translations.TranslationHelperFunc) inventory.ServerTool {
+	schema := &jsonschema.Schema{
+		Type: "object",
+		Properties: map[string]*jsonschema.Schema{
+			"owner": {
+				Type:        "string",
+				Description: "The owner of the repository.",
+			},
+			"repo": {
+				Type:        "string",
+				Description: "The name of the repository.",
+			},
+			"state": {
+				Type:        "string",
+				Description: "Filter dependabot alerts by state. Defaults to open",
+				Enum:        []any{"open", "fixed", "dismissed", "auto_dismissed"},
+				Default:     json.RawMessage(`"open"`),
+			},
+			"severity": {
+				Type:        "string",
+				Description: "Filter dependabot alerts by severity",
+				Enum:        []any{"low", "medium", "high", "critical"},
+			},
+		},
+		Required: []string{"owner", "repo"},
+	}
+	WithCursorPagination(schema)
+
+	return NewTool(
+		ToolsetMetadataDependabot,
+		mcp.Tool{
+			Name:        "list_dependabot_alerts",
+			Description: t("TOOL_LIST_DEPENDABOT_ALERTS_DESCRIPTION", "List dependabot alerts in a GitHub repository."),
+			Annotations: &mcp.ToolAnnotations{
 				Title:        t("TOOL_LIST_DEPENDABOT_ALERTS_USER_TITLE", "List dependabot alerts"),
-				ReadOnlyHint: ToBoolPtr(true),
-			}),
-			mcp.WithString("owner",
-				mcp.Required(),
-				mcp.Description("The owner of the repository."),
-			),
-			mcp.WithString("repo",
-				mcp.Required(),
-				mcp.Description("The name of the repository."),
-			),
-			mcp.WithString("state",
-				mcp.Description("Filter dependabot alerts by state. Defaults to open"),
-				mcp.DefaultString("open"),
-				mcp.Enum("open", "fixed", "dismissed", "auto_dismissed"),
-			),
-			mcp.WithString("severity",
-				mcp.Description("Filter dependabot alerts by severity"),
-				mcp.Enum("low", "medium", "high", "critical"),
-			),
-		),
-		func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			owner, err := RequiredParam[string](request, "owner")
+				ReadOnlyHint: true,
+			},
+			InputSchema: schema,
+		},
+		scopes.RequireAll(scopes.SecurityEvents),
+		func(ctx context.Context, deps ToolDependencies, _ *mcp.CallToolRequest, args map[string]any) (*mcp.CallToolResult, any, error) {
+			owner, err := RequiredParam[string](args, "owner")
 			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
+				return utils.NewToolResultError(err.Error()), nil, nil
 			}
-			repo, err := RequiredParam[string](request, "repo")
+			repo, err := RequiredParam[string](args, "repo")
 			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
+				return utils.NewToolResultError(err.Error()), nil, nil
 			}
-			state, err := OptionalParam[string](request, "state")
+			state, err := OptionalParam[string](args, "state")
 			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
+				return utils.NewToolResultError(err.Error()), nil, nil
 			}
-			severity, err := OptionalParam[string](request, "severity")
+			severity, err := OptionalParam[string](args, "severity")
 			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
+				return utils.NewToolResultError(err.Error()), nil, nil
 			}
 
-			client, err := getClient(ctx)
+			pagination, err := OptionalCursorPaginationParams(args)
 			if err != nil {
-				return nil, fmt.Errorf("failed to get GitHub client: %w", err)
+				return utils.NewToolResultError(err.Error()), nil, nil
+			}
+
+			client, err := deps.GetClient(ctx)
+			if err != nil {
+				return utils.NewToolResultErrorFromErr("failed to get GitHub client", err), nil, err
 			}
 
 			alerts, resp, err := client.Dependabot.ListRepoAlerts(ctx, owner, repo, &github.ListAlertsOptions{
 				State:    ToStringPtr(state),
 				Severity: ToStringPtr(severity),
+				ListCursorOptions: github.ListCursorOptions{
+					PerPage: pagination.PerPage,
+					After:   pagination.After,
+				},
 			})
 			if err != nil {
 				return ghErrors.NewGitHubAPIErrorResponse(ctx,
-					fmt.Sprintf("failed to list alerts for repository '%s/%s'", owner, repo),
+					dependabotErrMsg(fmt.Sprintf("failed to list alerts for repository '%s/%s'", owner, repo), owner, repo, resp),
 					resp,
 					err,
-				), nil
+				), nil, nil
 			}
 			defer func() { _ = resp.Body.Close() }()
 
 			if resp.StatusCode != http.StatusOK {
 				body, err := io.ReadAll(resp.Body)
 				if err != nil {
-					return nil, fmt.Errorf("failed to read response body: %w", err)
+					return utils.NewToolResultErrorFromErr("failed to read response body", err), nil, err
 				}
-				return mcp.NewToolResultError(fmt.Sprintf("failed to list alerts: %s", string(body))), nil
+				return ghErrors.NewGitHubAPIStatusErrorResponse(ctx, "failed to list alerts", resp, body), nil, nil
 			}
 
-			r, err := json.Marshal(alerts)
+			response := map[string]any{
+				"alerts":   alerts,
+				"pageInfo": buildPageInfo(resp),
+			}
+
+			r, err := json.Marshal(response)
 			if err != nil {
-				return nil, fmt.Errorf("failed to marshal alerts: %w", err)
+				return utils.NewToolResultErrorFromErr("failed to marshal alerts", err), nil, err
 			}
 
-			return mcp.NewToolResultText(string(r)), nil
-		}
+			result := utils.NewToolResultText(string(r))
+			// Dependabot alerts are access-restricted regardless of repo
+			// visibility and embed attacker-influenceable advisory text, so the
+			// label is always private-untrusted.
+			result = attachStaticIFCLabel(ctx, deps, result, ifc.LabelSecurityAlert())
+			return result, nil, nil
+		},
+	)
+}
+
+// dependabotErrMsg enhances error messages for dependabot API failures by
+// appending a hint about token permissions when the response indicates
+// the token may lack access to the repository (403 or 404).
+func dependabotErrMsg(base, owner, repo string, resp *github.Response) string {
+	if resp != nil && (resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound) {
+		return fmt.Sprintf("%s. Your token may not have access to Dependabot alerts on %s/%s. "+
+			"To access Dependabot alerts, the token needs the 'security_events' scope or, for fine-grained tokens, "+
+			"Dependabot alerts read permission for this specific repository.",
+			base, owner, repo)
+	}
+	return base
 }

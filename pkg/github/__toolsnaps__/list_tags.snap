@@ -1,7 +1,8 @@
 {
   "annotations": {
-    "title": "List tags",
-    "readOnlyHint": true
+    "idempotentHint": false,
+    "readOnlyHint": true,
+    "title": "List tags"
   },
   "description": "List git tags in a GitHub repository",
   "inputSchema": {

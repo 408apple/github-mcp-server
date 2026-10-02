@@ -1,278 +1,251 @@
 package ghmcp
 
 import (
+	"context"
+	"encoding/json"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/github/github-mcp-server/pkg/github"
+	"github.com/github/github-mcp-server/pkg/observability"
+	"github.com/github/github-mcp-server/pkg/observability/metrics"
+	"github.com/github/github-mcp-server/pkg/translations"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestCleanToolsets(t *testing.T) {
+func TestCreateGitHubClientsGraphQLUserAgent(t *testing.T) {
+	t.Parallel()
+	for _, insiders := range []bool{false, true} {
+		t.Run(map[bool]string{false: "release", true: "insiders"}[insiders], func(t *testing.T) {
+			headers := make(chan http.Header, 1)
+			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				headers <- r.Header.Clone()
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"data":{"viewer":{"login":"octocat"}}}`))
+			}))
+			defer api.Close()
+			cfg := github.MCPServerConfig{Version: "v1.2.3", Token: "fixture-token", InsidersMode: insiders}
+			clients, err := createGitHubClients(cfg, newStaticAPIHostResolver(t, api.URL))
+			require.NoError(t, err)
+			var query struct {
+				Viewer struct{ Login string }
+			}
+			require.NoError(t, clients.gql.Query(t.Context(), &query, nil))
+			want := "github-mcp-server/v1.2.3"
+			if insiders {
+				want += " (insiders)"
+			}
+			header := <-headers
+			assert.Equal(t, want, header.Get("User-Agent"))
+			assert.Equal(t, "Bearer fixture-token", header.Get("Authorization"))
+		})
+	}
+}
+
+func TestStdioGraphQLUserAgent(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name            string
-		input           []string
-		dynamicToolsets bool
-		expected        []string
-		expectedInvalid []string
+		name       string
+		handshake  string
+		clientInfo *mcp.Implementation
+		version    string
+		insiders   bool
+		want       string
 	}{
 		{
-			name:            "empty slice",
-			input:           []string{},
-			dynamicToolsets: false,
-			expected:        []string{},
+			name: "SDK discovery", handshake: "sdk", version: "v1.2.3",
+			clientInfo: &mcp.Implementation{Name: "test-client", Version: "4.5.6"},
+			want:       "github-mcp-server/v1.2.3 (test-client/4.5.6)",
 		},
 		{
-			name:            "nil input slice",
-			input:           nil,
-			dynamicToolsets: false,
-			expected:        []string{},
-		},
-		// all test cases
-		{
-			name:            "all only",
-			input:           []string{"all"},
-			dynamicToolsets: false,
-			expected:        []string{"all"},
+			name: "direct modern call", version: "v1.2.3",
+			clientInfo: &mcp.Implementation{Name: "test-client", Version: "4.5.6"},
+			want:       "github-mcp-server/v1.2.3 (test-client/4.5.6)",
 		},
 		{
-			name:            "all appears multiple times",
-			input:           []string{"all", "actions", "all"},
-			dynamicToolsets: false,
-			expected:        []string{"all"},
+			name: "modern call without optional client info", version: "v1.2.3",
+			want: "github-mcp-server/v1.2.3",
 		},
 		{
-			name:            "all with other toolsets",
-			input:           []string{"all", "actions", "gists"},
-			dynamicToolsets: false,
-			expected:        []string{"all"},
+			name: "legacy initialize", handshake: "legacy", version: "v1.2.3",
+			clientInfo: &mcp.Implementation{Name: "test-client", Version: "4.5.6"},
+			want:       "github-mcp-server/v1.2.3 (test-client/4.5.6)",
 		},
 		{
-			name:            "all with default",
-			input:           []string{"default", "all", "actions"},
-			dynamicToolsets: false,
-			expected:        []string{"all"},
-		},
-		// default test cases
-		{
-			name:            "default only",
-			input:           []string{"default"},
-			dynamicToolsets: false,
-			expected: []string{
-				"context",
-				"repos",
-				"issues",
-				"pull_requests",
-				"users",
-			},
+			name: "insiders", version: "v1.2.3", insiders: true,
+			clientInfo: &mcp.Implementation{Name: "test-client", Version: "4.5.6"},
+			want:       "github-mcp-server/v1.2.3 (test-client/4.5.6) (insiders)",
 		},
 		{
-			name:            "default with additional toolsets",
-			input:           []string{"default", "actions", "gists"},
-			dynamicToolsets: false,
-			expected: []string{
-				"actions",
-				"gists",
-				"context",
-				"repos",
-				"issues",
-				"pull_requests",
-				"users",
-			},
+			name: "different server build", version: "v1.2.4",
+			clientInfo: &mcp.Implementation{Name: "test-client", Version: "4.5.6"},
+			want:       "github-mcp-server/v1.2.4 (test-client/4.5.6)",
 		},
 		{
-			name:            "no default present",
-			input:           []string{"actions", "gists", "notifications"},
-			dynamicToolsets: false,
-			expected:        []string{"actions", "gists", "notifications"},
+			name: "HTTP comment delimiters", version: "v1.2.3",
+			clientInfo: &mcp.Implementation{Name: `Editor (Preview) \client`, Version: `v(1)\build`},
+			want:       `github-mcp-server/v1.2.3 (Editor \(Preview\) \\client/v\(1\)\\build)`,
 		},
 		{
-			name:            "duplicate toolsets without default",
-			input:           []string{"actions", "gists", "actions"},
-			dynamicToolsets: false,
-			expected:        []string{"actions", "gists"},
+			name: "modern control characters", version: "v1.2.3",
+			clientInfo: &mcp.Implementation{Name: "editor(\x00)\\client\r\nX-Fake:1", Version: "1.0\tbeta\x7f"},
+			want:       `github-mcp-server/v1.2.3 (editor\(\x00\)\\client\r\nX-Fake:1/1.0\tbeta\x7f)`,
 		},
 		{
-			name:            "duplicate toolsets with default",
-			input:           []string{"context", "repos", "issues", "pull_requests", "users", "default"},
-			dynamicToolsets: false,
-			expected: []string{
-				"context",
-				"repos",
-				"issues",
-				"pull_requests",
-				"users",
-			},
+			name: "SDK control characters", handshake: "sdk", version: "v1.2.3", insiders: true,
+			clientInfo: &mcp.Implementation{Name: "editor(\x00)\\client\r\nX-Fake:1", Version: "1.0\tbeta\x7f"},
+			want:       `github-mcp-server/v1.2.3 (editor\(\x00\)\\client\r\nX-Fake:1/1.0\tbeta\x7f) (insiders)`,
 		},
 		{
-			name:            "default appears multiple times with different toolsets in between",
-			input:           []string{"default", "actions", "default", "gists", "default"},
-			dynamicToolsets: false,
-			expected: []string{
-				"actions",
-				"gists",
-				"context",
-				"repos",
-				"issues",
-				"pull_requests",
-				"users",
-			},
-		},
-		// Dynamic toolsets test cases
-		{
-			name:            "dynamic toolsets - all only should be filtered",
-			input:           []string{"all"},
-			dynamicToolsets: true,
-			expected:        []string{},
+			name: "legacy control characters", handshake: "legacy", version: "v1.2.3",
+			clientInfo: &mcp.Implementation{Name: "editor(\x00)\\client\r\nX-Fake:1", Version: "1.0\tbeta\x7f"},
+			want:       `github-mcp-server/v1.2.3 (editor\(\x00\)\\client\r\nX-Fake:1/1.0\tbeta\x7f)`,
 		},
 		{
-			name:            "dynamic toolsets - all with other toolsets",
-			input:           []string{"all", "actions", "gists"},
-			dynamicToolsets: true,
-			expected:        []string{"actions", "gists"},
+			name: "spaces and Unicode preserved", version: "v1.2.3",
+			clientInfo: &mcp.Implementation{Name: "VS Code \u03b2", Version: "\u03b1 1.0"},
+			want:       "github-mcp-server/v1.2.3 (VS Code \u03b2/\u03b1 1.0)",
 		},
 		{
-			name:            "dynamic toolsets - all with default",
-			input:           []string{"all", "default", "actions"},
-			dynamicToolsets: true,
-			expected: []string{
-				"actions",
-				"context",
-				"repos",
-				"issues",
-				"pull_requests",
-				"users",
-			},
+			name: "empty client metadata", version: "v1.2.3",
+			clientInfo: &mcp.Implementation{},
+			want:       "github-mcp-server/v1.2.3 (/)",
 		},
 		{
-			name:            "dynamic toolsets - no all present",
-			input:           []string{"actions", "gists"},
-			dynamicToolsets: true,
-			expected:        []string{"actions", "gists"},
-		},
-		{
-			name:            "dynamic toolsets - default only",
-			input:           []string{"default"},
-			dynamicToolsets: true,
-			expected: []string{
-				"context",
-				"repos",
-				"issues",
-				"pull_requests",
-				"users",
-			},
-		},
-		{
-			name:            "only special keywords with dynamic mode",
-			input:           []string{"all", "default"},
-			dynamicToolsets: true,
-			expected: []string{
-				"context",
-				"repos",
-				"issues",
-				"pull_requests",
-				"users",
-			},
-		},
-		{
-			name:            "all with default and overlapping default toolsets in dynamic mode",
-			input:           []string{"all", "default", "issues", "repos"},
-			dynamicToolsets: true,
-			expected: []string{
-				"issues",
-				"repos",
-				"context",
-				"pull_requests",
-				"users",
-			},
-		},
-		// Whitespace test cases
-		{
-			name:            "whitespace check - leading and trailing whitespace on regular toolsets",
-			input:           []string{" actions ", "  gists  ", "notifications"},
-			dynamicToolsets: false,
-			expected:        []string{"actions", "gists", "notifications"},
-		},
-		{
-			name:            "whitespace check - default toolset",
-			input:           []string{" actions ", "  default  ", "notifications"},
-			dynamicToolsets: false,
-			expected: []string{
-				"actions",
-				"notifications",
-				"context",
-				"repos",
-				"issues",
-				"pull_requests",
-				"users",
-			},
-		},
-		{
-			name:            "whitespace check - all toolset",
-			input:           []string{" actions ", "  gists  ", "notifications", "  all   "},
-			dynamicToolsets: false,
-			expected:        []string{"all"},
-		},
-		// Invalid toolset test cases
-		{
-			name:            "mix of valid and invalid toolsets",
-			input:           []string{"actions", "invalid_toolset", "gists", "typo_repo"},
-			dynamicToolsets: false,
-			expected:        []string{"actions", "gists"},
-			expectedInvalid: []string{"invalid_toolset", "typo_repo"},
-		},
-		{
-			name:            "invalid with whitespace",
-			input:           []string{" invalid_tool ", "  actions  ", " typo_gist "},
-			dynamicToolsets: false,
-			expected:        []string{"actions"},
-			expectedInvalid: []string{"invalid_tool", "typo_gist"},
-		},
-		{
-			name:            "empty string in toolsets",
-			input:           []string{"", "actions", "  ", "gists"},
-			dynamicToolsets: false,
-			expected:        []string{"actions", "gists"},
-			expectedInvalid: []string{},
+			name: "quoted client metadata", version: "v1.2.3",
+			clientInfo: &mcp.Implementation{Name: `"Editor"`, Version: `v"1`},
+			want:       `github-mcp-server/v1.2.3 (\"Editor\"/v\"1)`,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, invalid := cleanToolsets(tt.input, tt.dynamicToolsets)
+			t.Parallel()
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
 
-			require.Len(t, result, len(tt.expected), "result length should match expected length")
+			headers := make(chan http.Header, 2)
+			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				headers <- r.Header.Clone()
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"data":{"repository":{"isPrivate":false,"issues":{"nodes":[],"totalCount":0,"pageInfo":{"hasNextPage":false,"endCursor":""}}}}}`))
+			}))
+			defer api.Close()
 
-			if tt.expectedInvalid == nil {
-				tt.expectedInvalid = []string{}
+			cfg := github.MCPServerConfig{
+				Version: tt.version, Token: "fixture-token", InsidersMode: tt.insiders,
+				Translator: translations.NullTranslationHelper, Logger: discardLogger(),
 			}
-			require.Len(t, invalid, len(tt.expectedInvalid), "invalid length should match expected invalid length")
+			clients, err := createGitHubClients(cfg, newStaticAPIHostResolver(t, api.URL))
+			require.NoError(t, err)
+			obs, err := observability.NewExporters(cfg.Logger, metrics.NewNoopMetrics())
+			require.NoError(t, err)
+			deps := github.NewBaseDeps(
+				clients.rest, clients.gql, clients.raw, nil, cfg.Translator,
+				github.FeatureFlags{}, 5000, createFeatureChecker(nil, tt.insiders), obs,
+			)
+			inv, err := github.NewInventory(cfg.Translator).
+				WithToolsets([]string{}).WithTools([]string{"list_issues"}).Build()
+			require.NoError(t, err)
+			server, err := github.NewMCPServer(ctx, &cfg, deps, inv)
+			require.NoError(t, err)
+			server.AddReceivingMiddleware(addUserAgentsMiddleware(cfg))
+			var initialized atomic.Bool
+			server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
+				return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+					if method == "initialize" {
+						initialized.Store(true)
+					}
+					return next(ctx, method, req)
+				}
+			})
 
-			resultMap := make(map[string]bool)
-			for _, toolset := range result {
-				resultMap[toolset] = true
+			serverConn, clientConn := net.Pipe()
+			defer clientConn.Close()
+			require.NoError(t, clientConn.SetDeadline(time.Now().Add(10*time.Second)))
+			session, err := server.Connect(ctx, &mcp.IOTransport{Reader: serverConn, Writer: serverConn}, nil)
+			require.NoError(t, err)
+			defer session.Close()
+			params := &mcp.CallToolParams{
+				Name: "list_issues", Arguments: map[string]any{"owner": "owner", "repo": "repo"},
+			}
+			var changedClient bool
+			if tt.handshake == "sdk" {
+				client := mcp.NewClient(tt.clientInfo, nil)
+				cs, err := client.Connect(ctx, &mcp.IOTransport{Reader: clientConn, Writer: clientConn}, nil)
+				require.NoError(t, err)
+				defer cs.Close()
+				assert.Equal(t, "2026-07-28", cs.InitializeResult().ProtocolVersion)
+				result, err := cs.CallTool(ctx, params)
+				require.NoError(t, err)
+				require.False(t, result.IsError, "%+v", result.Content)
+			} else {
+				encoder, decoder := json.NewEncoder(clientConn), json.NewDecoder(clientConn)
+				id := 0
+				call := func(method string, params any) json.RawMessage {
+					t.Helper()
+					id++
+					require.NoError(t, encoder.Encode(map[string]any{
+						"jsonrpc": "2.0", "id": id, "method": method, "params": params,
+					}))
+					var response struct {
+						Result json.RawMessage `json:"result"`
+						Error  json.RawMessage `json:"error"`
+					}
+					require.NoError(t, decoder.Decode(&response))
+					require.Empty(t, response.Error)
+					return response.Result
+				}
+				if tt.handshake == "legacy" {
+					call("initialize", &mcp.InitializeParams{
+						ProtocolVersion: "2025-11-25", Capabilities: &mcp.ClientCapabilities{},
+						ClientInfo: tt.clientInfo,
+					})
+					require.NoError(t, encoder.Encode(map[string]any{
+						"jsonrpc": "2.0", "method": "notifications/initialized",
+					}))
+				} else {
+					params.Meta = mcp.Meta{
+						mcp.MetaKeyProtocolVersion: "2026-07-28", mcp.MetaKeyClientCapabilities: map[string]any{},
+					}
+					if tt.clientInfo != nil {
+						params.Meta[mcp.MetaKeyClientInfo] = tt.clientInfo
+					}
+				}
+				var result mcp.CallToolResult
+				require.NoError(t, json.Unmarshal(call("tools/call", params), &result))
+				require.False(t, result.IsError, "%+v", result.Content)
+				if tt.handshake != "legacy" {
+					params.Meta[mcp.MetaKeyClientInfo] = &mcp.Implementation{Name: "other-client", Version: "7.8.9"}
+					require.NoError(t, json.Unmarshal(call("tools/call", params), &result))
+					require.False(t, result.IsError, "%+v", result.Content)
+					changedClient = true
+				}
 			}
 
-			expectedMap := make(map[string]bool)
-			for _, toolset := range tt.expected {
-				expectedMap[toolset] = true
+			assert.Equal(t, tt.handshake == "legacy", initialized.Load())
+			select {
+			case header := <-headers:
+				assert.Equal(t, tt.want, header.Get("User-Agent"))
+				assert.Equal(t, "Bearer fixture-token", header.Get("Authorization"))
+				assert.Equal(t, "issue_fields, repo_issue_fields", header.Get("GraphQL-Features"))
+			case <-ctx.Done():
+				t.Fatal("GraphQL request did not reach the local HTTP server")
 			}
-
-			invalidMap := make(map[string]bool)
-			for _, toolset := range invalid {
-				invalidMap[toolset] = true
+			if changedClient {
+				want := "github-mcp-server/" + tt.version + " (other-client/7.8.9)"
+				if tt.insiders {
+					want += " (insiders)"
+				}
+				assert.Equal(t, want, (<-headers).Get("User-Agent"))
 			}
-
-			expectedInvalidMap := make(map[string]bool)
-			for _, toolset := range tt.expectedInvalid {
-				expectedInvalidMap[toolset] = true
-			}
-
-			assert.Equal(t, expectedMap, resultMap, "result should contain all expected toolsets without duplicates")
-			assert.Equal(t, expectedInvalidMap, invalidMap, "invalid should contain all expected invalid toolsets")
-
-			assert.Len(t, resultMap, len(result), "result should not contain duplicates")
-
-			assert.False(t, resultMap["default"], "result should not contain 'default'")
 		})
 	}
 }

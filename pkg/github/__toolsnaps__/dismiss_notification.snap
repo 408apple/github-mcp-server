@@ -1,7 +1,8 @@
 {
   "annotations": {
-    "title": "Dismiss notification",
-    "readOnlyHint": false
+    "idempotentHint": false,
+    "readOnlyHint": false,
+    "title": "Dismiss notification"
   },
   "description": "Dismiss a notification by marking it as read or done",
   "inputSchema": {
@@ -20,7 +21,8 @@
       }
     },
     "required": [
-      "threadID"
+      "threadID",
+      "state"
     ],
     "type": "object"
   },

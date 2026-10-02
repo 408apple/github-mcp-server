@@ -1,15 +1,12 @@
 {
   "annotations": {
-    "title": "List labels from a repository.",
-    "readOnlyHint": true
+    "idempotentHint": false,
+    "readOnlyHint": true,
+    "title": "List labels from a repository"
   },
-  "description": "List labels from a repository or an issue",
+  "description": "List labels from a repository, ordered by issue count (descending) so the most-used labels are returned first",
   "inputSchema": {
     "properties": {
-      "issue_number": {
-        "description": "Issue number - if provided, lists labels on the specific issue",
-        "type": "number"
-      },
       "owner": {
         "description": "Repository owner (username or organization name) - required for all operations",
         "type": "string"

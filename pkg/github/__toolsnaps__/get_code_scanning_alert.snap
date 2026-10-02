@@ -1,7 +1,8 @@
 {
   "annotations": {
-    "title": "Get code scanning alert",
-    "readOnlyHint": true
+    "idempotentHint": false,
+    "readOnlyHint": true,
+    "title": "Get code scanning alert"
   },
   "description": "Get details of a specific code scanning alert in a GitHub repository.",
   "inputSchema": {

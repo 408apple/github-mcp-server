@@ -2,14 +2,22 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	ghErrors "github.com/github/github-mcp-server/pkg/errors"
+	"github.com/github/github-mcp-server/pkg/ifc"
+	"github.com/github/github-mcp-server/pkg/inventory"
+	"github.com/github/github-mcp-server/pkg/scopes"
 	"github.com/github/github-mcp-server/pkg/translations"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/github/github-mcp-server/pkg/utils"
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/shurcooL/githubv4"
 )
+
+// GetMeUIResourceURI is the URI for the get_me tool's MCP App UI resource.
+const GetMeUIResourceURI = "ui://github-mcp-server/get-me"
 
 // UserDetails contains additional fields about a GitHub user not already
 // present in MinimalUser. Used by get_me context tool but omitted from search_users.
@@ -34,62 +42,74 @@ type UserDetails struct {
 }
 
 // GetMe creates a tool to get details of the authenticated user.
-func GetMe(getClient GetClientFn, t translations.TranslationHelperFunc) (mcp.Tool, server.ToolHandlerFunc) {
-	tool := mcp.NewTool("get_me",
-		mcp.WithDescription(t("TOOL_GET_ME_DESCRIPTION", "Get details of the authenticated GitHub user. Use this when a request is about the user's own profile for GitHub. Or when information is missing to build other tool calls.")),
-		mcp.WithToolAnnotation(mcp.ToolAnnotation{
-			Title:        t("TOOL_GET_ME_USER_TITLE", "Get my user profile"),
-			ReadOnlyHint: ToBoolPtr(true),
-		}),
-	)
-
-	type args struct{}
-	handler := mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, _ args) (*mcp.CallToolResult, error) {
-		client, err := getClient(ctx)
-		if err != nil {
-			return mcp.NewToolResultErrorFromErr("failed to get GitHub client", err), nil
-		}
-
-		user, res, err := client.Users.Get(ctx, "")
-		if err != nil {
-			return ghErrors.NewGitHubAPIErrorResponse(ctx,
-				"failed to get user",
-				res,
-				err,
-			), nil
-		}
-
-		// Create minimal user representation instead of returning full user object
-		minimalUser := MinimalUser{
-			Login:      user.GetLogin(),
-			ID:         user.GetID(),
-			ProfileURL: user.GetHTMLURL(),
-			AvatarURL:  user.GetAvatarURL(),
-			Details: &UserDetails{
-				Name:              user.GetName(),
-				Company:           user.GetCompany(),
-				Blog:              user.GetBlog(),
-				Location:          user.GetLocation(),
-				Email:             user.GetEmail(),
-				Hireable:          user.GetHireable(),
-				Bio:               user.GetBio(),
-				TwitterUsername:   user.GetTwitterUsername(),
-				PublicRepos:       user.GetPublicRepos(),
-				PublicGists:       user.GetPublicGists(),
-				Followers:         user.GetFollowers(),
-				Following:         user.GetFollowing(),
-				CreatedAt:         user.GetCreatedAt().Time,
-				UpdatedAt:         user.GetUpdatedAt().Time,
-				PrivateGists:      user.GetPrivateGists(),
-				TotalPrivateRepos: user.GetTotalPrivateRepos(),
-				OwnedPrivateRepos: user.GetOwnedPrivateRepos(),
+func GetMe(t translations.TranslationHelperFunc) inventory.ServerTool {
+	return NewTool(
+		ToolsetMetadataContext,
+		mcp.Tool{
+			Name:        "get_me",
+			Description: t("TOOL_GET_ME_DESCRIPTION", "Get details of the authenticated GitHub user. Use this when a request is about the user's own profile for GitHub. Or when information is missing to build other tool calls."),
+			Annotations: &mcp.ToolAnnotations{
+				Title:        t("TOOL_GET_ME_USER_TITLE", "Get my user profile"),
+				ReadOnlyHint: true,
 			},
-		}
+			// Use json.RawMessage to ensure "properties" is included even when empty.
+			// OpenAI strict mode requires the properties field to be present.
+			InputSchema: json.RawMessage(`{"type":"object","properties":{}}`),
+			Meta: mcp.Meta{
+				"ui": map[string]any{
+					"resourceUri": GetMeUIResourceURI,
+					"visibility":  []string{"model", "app"},
+				},
+			},
+		},
+		scopes.NoScopes(),
+		func(ctx context.Context, deps ToolDependencies, _ *mcp.CallToolRequest, _ map[string]any) (*mcp.CallToolResult, any, error) {
+			client, err := deps.GetClient(ctx)
+			if err != nil {
+				return utils.NewToolResultErrorFromErr("failed to get GitHub client", err), nil, nil
+			}
 
-		return MarshalledTextResult(minimalUser), nil
-	})
+			user, res, err := client.Users.Get(ctx, "")
+			if err != nil {
+				return ghErrors.NewGitHubAPIErrorResponse(ctx,
+					"failed to get user",
+					res,
+					err,
+				), nil, nil
+			}
 
-	return tool, handler
+			// Create minimal user representation instead of returning full user object
+			minimalUser := MinimalUser{
+				Login:      user.GetLogin(),
+				ID:         user.GetID(),
+				ProfileURL: user.GetHTMLURL(),
+				AvatarURL:  user.GetAvatarURL(),
+				Details: &UserDetails{
+					Name:              user.GetName(),
+					Company:           user.GetCompany(),
+					Blog:              user.GetBlog(),
+					Location:          user.GetLocation(),
+					Email:             user.GetEmail(),
+					Hireable:          user.GetHireable(),
+					Bio:               user.GetBio(),
+					TwitterUsername:   user.GetTwitterUsername(),
+					PublicRepos:       user.GetPublicRepos(),
+					PublicGists:       user.GetPublicGists(),
+					Followers:         user.GetFollowers(),
+					Following:         user.GetFollowing(),
+					CreatedAt:         user.GetCreatedAt().Time,
+					UpdatedAt:         user.GetUpdatedAt().Time,
+					PrivateGists:      user.GetPrivateGists(),
+					TotalPrivateRepos: user.GetTotalPrivateRepos(),
+					OwnedPrivateRepos: user.GetOwnedPrivateRepos(),
+				},
+			}
+
+			result := MarshalledTextResult(minimalUser)
+			result = attachStaticIFCLabel(ctx, deps, result, ifc.LabelGetMe())
+			return result, nil, nil
+		},
+	)
 }
 
 type TeamInfo struct {
@@ -103,30 +123,40 @@ type OrganizationTeams struct {
 	Teams []TeamInfo `json:"teams"`
 }
 
-func GetTeams(getClient GetClientFn, getGQLClient GetGQLClientFn, t translations.TranslationHelperFunc) (mcp.Tool, server.ToolHandlerFunc) {
-	return mcp.NewTool("get_teams",
-			mcp.WithDescription(t("TOOL_GET_TEAMS_DESCRIPTION", "Get details of the teams the user is a member of. Limited to organizations accessible with current credentials")),
-			mcp.WithString("user",
-				mcp.Description(t("TOOL_GET_TEAMS_USER_DESCRIPTION", "Username to get teams for. If not provided, uses the authenticated user.")),
-			),
-			mcp.WithToolAnnotation(mcp.ToolAnnotation{
+func GetTeams(t translations.TranslationHelperFunc) inventory.ServerTool {
+	return NewTool(
+		ToolsetMetadataContext,
+		mcp.Tool{
+			Name:        "get_teams",
+			Description: t("TOOL_GET_TEAMS_DESCRIPTION", "Get details of the teams the user is a member of. Limited to organizations accessible with current credentials"),
+			Annotations: &mcp.ToolAnnotations{
 				Title:        t("TOOL_GET_TEAMS_TITLE", "Get teams"),
-				ReadOnlyHint: ToBoolPtr(true),
-			}),
-		),
-		func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			user, err := OptionalParam[string](request, "user")
+				ReadOnlyHint: true,
+			},
+			InputSchema: &jsonschema.Schema{
+				Type: "object",
+				Properties: map[string]*jsonschema.Schema{
+					"user": {
+						Type:        "string",
+						Description: t("TOOL_GET_TEAMS_USER_DESCRIPTION", "Username to get teams for. If not provided, uses the authenticated user."),
+					},
+				},
+			},
+		},
+		scopes.RequireAll(scopes.ReadOrg),
+		func(ctx context.Context, deps ToolDependencies, _ *mcp.CallToolRequest, args map[string]any) (*mcp.CallToolResult, any, error) {
+			user, err := OptionalParam[string](args, "user")
 			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
+				return utils.NewToolResultError(err.Error()), nil, nil
 			}
 
 			var username string
 			if user != "" {
 				username = user
 			} else {
-				client, err := getClient(ctx)
+				client, err := deps.GetClient(ctx)
 				if err != nil {
-					return mcp.NewToolResultErrorFromErr("failed to get GitHub client", err), nil
+					return utils.NewToolResultErrorFromErr("failed to get GitHub client", err), nil, nil
 				}
 
 				userResp, res, err := client.Users.Get(ctx, "")
@@ -135,14 +165,14 @@ func GetTeams(getClient GetClientFn, getGQLClient GetGQLClientFn, t translations
 						"failed to get user",
 						res,
 						err,
-					), nil
+					), nil, nil
 				}
 				username = userResp.GetLogin()
 			}
 
-			gqlClient, err := getGQLClient(ctx)
+			gqlClient, err := deps.GetGQLClient(ctx)
 			if err != nil {
-				return mcp.NewToolResultErrorFromErr("failed to get GitHub GQL client", err), nil
+				return utils.NewToolResultErrorFromErr("failed to get GitHub GQL client", err), nil, nil
 			}
 
 			var q struct {
@@ -161,11 +191,11 @@ func GetTeams(getClient GetClientFn, getGQLClient GetGQLClientFn, t translations
 					} `graphql:"organizations(first: 100)"`
 				} `graphql:"user(login: $login)"`
 			}
-			vars := map[string]interface{}{
+			vars := map[string]any{
 				"login": githubv4.String(username),
 			}
 			if err := gqlClient.Query(ctx, &q, vars); err != nil {
-				return ghErrors.NewGitHubGraphQLErrorResponse(ctx, "Failed to find teams", err), nil
+				return ghErrors.NewGitHubGraphQLErrorResponse(ctx, "Failed to find teams", err), nil, nil
 			}
 
 			var organizations []OrganizationTeams
@@ -186,40 +216,56 @@ func GetTeams(getClient GetClientFn, getGQLClient GetGQLClientFn, t translations
 				organizations = append(organizations, orgTeams)
 			}
 
-			return MarshalledTextResult(organizations), nil
-		}
+			result := MarshalledTextResult(organizations)
+			// Team membership is maintained by GitHub and cannot be forged by
+			// outside contributors (trusted). Org team rosters are visible only
+			// to org members, so confidentiality is private.
+			result = attachStaticIFCLabel(ctx, deps, result, ifc.LabelTeam())
+			return result, nil, nil
+		},
+	)
 }
 
-func GetTeamMembers(getGQLClient GetGQLClientFn, t translations.TranslationHelperFunc) (mcp.Tool, server.ToolHandlerFunc) {
-	return mcp.NewTool("get_team_members",
-			mcp.WithDescription(t("TOOL_GET_TEAM_MEMBERS_DESCRIPTION", "Get member usernames of a specific team in an organization. Limited to organizations accessible with current credentials")),
-			mcp.WithString("org",
-				mcp.Description(t("TOOL_GET_TEAM_MEMBERS_ORG_DESCRIPTION", "Organization login (owner) that contains the team.")),
-				mcp.Required(),
-			),
-			mcp.WithString("team_slug",
-				mcp.Description(t("TOOL_GET_TEAM_MEMBERS_TEAM_SLUG_DESCRIPTION", "Team slug")),
-				mcp.Required(),
-			),
-			mcp.WithToolAnnotation(mcp.ToolAnnotation{
+func GetTeamMembers(t translations.TranslationHelperFunc) inventory.ServerTool {
+	return NewTool(
+		ToolsetMetadataContext,
+		mcp.Tool{
+			Name:        "get_team_members",
+			Description: t("TOOL_GET_TEAM_MEMBERS_DESCRIPTION", "Get member usernames of a specific team in an organization. Limited to organizations accessible with current credentials"),
+			Annotations: &mcp.ToolAnnotations{
 				Title:        t("TOOL_GET_TEAM_MEMBERS_TITLE", "Get team members"),
-				ReadOnlyHint: ToBoolPtr(true),
-			}),
-		),
-		func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			org, err := RequiredParam[string](request, "org")
+				ReadOnlyHint: true,
+			},
+			InputSchema: &jsonschema.Schema{
+				Type: "object",
+				Properties: map[string]*jsonschema.Schema{
+					"org": {
+						Type:        "string",
+						Description: t("TOOL_GET_TEAM_MEMBERS_ORG_DESCRIPTION", "Organization login (owner) that contains the team."),
+					},
+					"team_slug": {
+						Type:        "string",
+						Description: t("TOOL_GET_TEAM_MEMBERS_TEAM_SLUG_DESCRIPTION", "Team slug"),
+					},
+				},
+				Required: []string{"org", "team_slug"},
+			},
+		},
+		scopes.RequireAll(scopes.ReadOrg),
+		func(ctx context.Context, deps ToolDependencies, _ *mcp.CallToolRequest, args map[string]any) (*mcp.CallToolResult, any, error) {
+			org, err := RequiredParam[string](args, "org")
 			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
+				return utils.NewToolResultError(err.Error()), nil, nil
 			}
 
-			teamSlug, err := RequiredParam[string](request, "team_slug")
+			teamSlug, err := RequiredParam[string](args, "team_slug")
 			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
+				return utils.NewToolResultError(err.Error()), nil, nil
 			}
 
-			gqlClient, err := getGQLClient(ctx)
+			gqlClient, err := deps.GetGQLClient(ctx)
 			if err != nil {
-				return mcp.NewToolResultErrorFromErr("failed to get GitHub GQL client", err), nil
+				return utils.NewToolResultErrorFromErr("failed to get GitHub GQL client", err), nil, nil
 			}
 
 			var q struct {
@@ -233,12 +279,12 @@ func GetTeamMembers(getGQLClient GetGQLClientFn, t translations.TranslationHelpe
 					} `graphql:"team(slug: $teamSlug)"`
 				} `graphql:"organization(login: $org)"`
 			}
-			vars := map[string]interface{}{
+			vars := map[string]any{
 				"org":      githubv4.String(org),
 				"teamSlug": githubv4.String(teamSlug),
 			}
 			if err := gqlClient.Query(ctx, &q, vars); err != nil {
-				return ghErrors.NewGitHubGraphQLErrorResponse(ctx, "Failed to get team members", err), nil
+				return ghErrors.NewGitHubGraphQLErrorResponse(ctx, "Failed to get team members", err), nil, nil
 			}
 
 			var members []string
@@ -246,6 +292,12 @@ func GetTeamMembers(getGQLClient GetGQLClientFn, t translations.TranslationHelpe
 				members = append(members, string(member.Login))
 			}
 
-			return MarshalledTextResult(members), nil
-		}
+			result := MarshalledTextResult(members)
+			// Team membership is maintained by GitHub and cannot be forged by
+			// outside contributors (trusted). A team's member roster is visible
+			// only to org members, so confidentiality is private.
+			result = attachStaticIFCLabel(ctx, deps, result, ifc.LabelTeam())
+			return result, nil, nil
+		},
+	)
 }

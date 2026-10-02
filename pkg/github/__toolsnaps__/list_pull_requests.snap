@@ -1,7 +1,8 @@
 {
   "annotations": {
-    "title": "List pull requests",
-    "readOnlyHint": true
+    "idempotentHint": false,
+    "readOnlyHint": true,
+    "title": "List pull requests"
   },
   "description": "List pull requests in a GitHub repository. If the user specifies an author, then DO NOT use this tool and use the search_pull_requests tool instead.",
   "inputSchema": {
@@ -17,6 +18,40 @@
           "desc"
         ],
         "type": "string"
+      },
+      "fields": {
+        "description": "Subset of fields to return for each pull request. If omitted, all fields are returned. Use this to reduce response size when you only need specific fields; omitting 'body' in particular drops the largest per-result data.",
+        "items": {
+          "enum": [
+            "number",
+            "title",
+            "body",
+            "state",
+            "draft",
+            "merged",
+            "mergeable_state",
+            "html_url",
+            "user",
+            "labels",
+            "assignees",
+            "requested_reviewers",
+            "merged_by",
+            "head",
+            "base",
+            "additions",
+            "deletions",
+            "changed_files",
+            "commits",
+            "comments",
+            "created_at",
+            "updated_at",
+            "closed_at",
+            "merged_at",
+            "milestone"
+          ],
+          "type": "string"
+        },
+        "type": "array"
       },
       "head": {
         "description": "Filter by head user/org and branch",

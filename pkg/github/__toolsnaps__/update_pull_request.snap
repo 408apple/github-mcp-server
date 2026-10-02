@@ -1,7 +1,17 @@
 {
+  "_meta": {
+    "ui": {
+      "resourceUri": "ui://github-mcp-server/pr-edit",
+      "visibility": [
+        "model",
+        "app"
+      ]
+    }
+  },
   "annotations": {
-    "title": "Edit pull request",
-    "readOnlyHint": false
+    "idempotentHint": false,
+    "readOnlyHint": false,
+    "title": "Edit pull request"
   },
   "description": "Update an existing pull request in a GitHub repository.",
   "inputSchema": {
@@ -35,7 +45,7 @@
         "type": "string"
       },
       "reviewers": {
-        "description": "GitHub usernames to request reviews from",
+        "description": "GitHub usernames or ORG/team-slug team reviewers to request reviews from",
         "items": {
           "type": "string"
         },

@@ -1,7 +1,8 @@
 {
   "annotations": {
-    "title": "Search repositories",
-    "readOnlyHint": true
+    "idempotentHint": false,
+    "readOnlyHint": true,
+    "title": "Search repositories"
   },
   "description": "Find GitHub repositories by name, description, readme, topics, or other metadata. Perfect for discovering projects, finding examples, or locating specific repositories across GitHub.",
   "inputSchema": {

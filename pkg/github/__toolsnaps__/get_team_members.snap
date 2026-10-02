@@ -1,7 +1,8 @@
 {
   "annotations": {
-    "title": "Get team members",
-    "readOnlyHint": true
+    "idempotentHint": false,
+    "readOnlyHint": true,
+    "title": "Get team members"
   },
   "description": "Get member usernames of a specific team in an organization. Limited to organizations accessible with current credentials",
   "inputSchema": {

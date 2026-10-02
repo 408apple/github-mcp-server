@@ -1,35 +1,33 @@
 {
   "annotations": {
-    "title": "Open new issue",
-    "readOnlyHint": false
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true,
+    "readOnlyHint": false,
+    "title": "Create Issue"
   },
-  "description": "Create a new issue in a GitHub repository.",
+  "description": "Create a new issue in a GitHub repository with a title and optional body.",
   "inputSchema": {
     "properties": {
-      "assignees": {
-        "description": "Usernames to assign to this issue",
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      },
       "body": {
-        "description": "Issue body content",
+        "description": "Issue body content (optional)",
         "type": "string"
       },
-      "labels": {
-        "description": "Labels to apply to this issue",
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
+      "owner": {
+        "description": "Repository owner (username or organization)",
+        "type": "string"
       },
-      "milestone": {
-        "description": "Milestone number",
+      "parent_issue_number": {
+        "description": "Issue number of the parent issue. The new issue is created and attached to this parent in the same operation.",
+        "minimum": 1,
         "type": "number"
       },
-      "owner": {
-        "description": "Repository owner",
+      "parent_owner": {
+        "description": "Repository owner of the parent issue. Must be provided with parent_repo. Omit both to use owner and repo. Only used when parent_issue_number is provided.",
+        "type": "string"
+      },
+      "parent_repo": {
+        "description": "Repository name of the parent issue. Must be provided with parent_owner. Omit both to use owner and repo. Only used when parent_issue_number is provided.",
         "type": "string"
       },
       "repo": {
@@ -38,10 +36,6 @@
       },
       "title": {
         "description": "Issue title",
-        "type": "string"
-      },
-      "type": {
-        "description": "Type of this issue",
         "type": "string"
       }
     },

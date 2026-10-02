@@ -1,3 +1,5 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/github/github-mcp-server)](https://goreportcard.com/report/github.com/github/github-mcp-server)
+
 # GitHub MCP Server
 
 The GitHub MCP Server connects AI tools directly to GitHub's platform. This gives AI agents, assistants, and chatbots the ability to read repositories and code files, manage issues and PRs, analyze code, and automate workflows. All through natural language interactions.
@@ -16,7 +18,7 @@ Built for developers who want to connect their AI tools to GitHub context and ca
 
 ## Remote GitHub MCP Server
 
-[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=github&config=%7B%22type%22%3A%20%22http%22%2C%22url%22%3A%20%22https%3A%2F%2Fapi.githubcopilot.com%2Fmcp%2F%22%7D) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=github&config=%7B%22type%22%3A%20%22http%22%2C%22url%22%3A%20%22https%3A%2F%2Fapi.githubcopilot.com%2Fmcp%2F%22%7D&quality=insiders)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=github&config=%7B%22type%22%3A%20%22http%22%2C%22url%22%3A%20%22https%3A%2F%2Fapi.githubcopilot.com%2Fmcp%2F%22%7D) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=github&config=%7B%22type%22%3A%20%22http%22%2C%22url%22%3A%20%22https%3A%2F%2Fapi.githubcopilot.com%2Fmcp%2F%22%7D&quality=insiders) [![Install in Visual Studio](https://img.shields.io/badge/Visual_Studio-Install_Server-C16FDE?style=flat-square&logo=visualstudio&logoColor=white)](https://aka.ms/vs/mcp-install?%7B%22name%22%3A%22github%22%2C%22gallery%22%3Atrue%2C%22url%22%3A%22https%3A%2F%2Fapi.githubcopilot.com%2Fmcp%2F%22%7D)
 
 The remote GitHub MCP Server is hosted by GitHub and provides the easiest method for getting up and running. If your MCP host does not support remote MCP servers, don't worry! You can use the [local version of the GitHub MCP Server](https://github.com/github/github-mcp-server?tab=readme-ov-file#local-github-mcp-server) instead.
 
@@ -78,10 +80,16 @@ Alternatively, to manually configure VS Code, choose the appropriate JSON block 
 </table>
 
 ### Install in other MCP hosts
+
+- **[Copilot CLI](/docs/installation-guides/install-copilot-cli.md)** - Installation guide for GitHub Copilot CLI
 - **[GitHub Copilot in other IDEs](/docs/installation-guides/install-other-copilot-ides.md)** - Installation for JetBrains, Visual Studio, Eclipse, and Xcode with GitHub Copilot
-- **[Claude Applications](/docs/installation-guides/install-claude.md)** - Installation guide for Claude Web, Claude Desktop and Claude Code CLI
+- **[Claude Applications](/docs/installation-guides/install-claude.md)** - Installation guide for Claude Desktop and Claude Code CLI
+- **[Codex](/docs/installation-guides/install-codex.md)** - Installation guide for OpenAI Codex
 - **[Cursor](/docs/installation-guides/install-cursor.md)** - Installation guide for Cursor IDE
+- **[OpenCode](/docs/installation-guides/install-opencode.md)** - Installation guide for the OpenCode terminal agent
 - **[Windsurf](/docs/installation-guides/install-windsurf.md)** - Installation guide for Windsurf IDE
+- **[Zed](/docs/installation-guides/install-zed.md)** - Installation guide for Zed editor
+- **[Rovo Dev CLI](/docs/installation-guides/install-rovo-dev-cli.md)** - Installation guide for Rovo Dev CLI
 
 > **Note:** Each MCP host application needs to configure a GitHub App or OAuth App to support remote access via OAuth. Any host application that supports remote MCP servers should support the remote GitHub server with PAT authentication. Configuration details and support levels vary by host. Make sure to refer to the host application's documentation for more info.
 
@@ -93,15 +101,61 @@ See [Remote Server Documentation](docs/remote-server.md) for full details on rem
 
 When no toolsets are specified, [default toolsets](#default-toolset) are used.
 
-#### Enterprise Cloud with data residency (ghe.com)
+#### Insiders Mode
+
+> **Try new features early!** The remote server offers an insiders version with early access to new features and experimental tools.
+
+<table>
+<tr><th>Using URL Path</th><th>Using Header</th></tr>
+<tr valign=top>
+<td>
+
+```json
+{
+  "servers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/insiders"
+    }
+  }
+}
+```
+
+</td>
+<td>
+
+```json
+{
+  "servers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "X-MCP-Insiders": "true"
+      }
+    }
+  }
+}
+```
+
+</td>
+</tr>
+</table>
+
+See [Remote Server Documentation](docs/remote-server.md#insiders-mode) for more details and examples, and [Insiders Features](docs/insiders-features.md) for a full list of what's available.
+
+#### GitHub Enterprise
+
+##### GitHub Enterprise Cloud with data residency (ghe.com)
 
 GitHub Enterprise Cloud can also make use of the remote server.
 
-Example for `https://octocorp.ghe.com`:
+Example for `https://octocorp.ghe.com` with GitHub PAT token:
+
 ```
 {
     ...
-    "proxima-github": {
+    "github-octocorp": {
       "type": "http",
       "url": "https://copilot-api.octocorp.ghe.com/mcp",
       "headers": {
@@ -112,45 +166,56 @@ Example for `https://octocorp.ghe.com`:
 }
 ```
 
+> **Note:** When using OAuth with GitHub Enterprise with VS Code and GitHub Copilot, you also need to configure your VS Code settings to point to your GitHub Enterprise instance - see [Authenticate from VS Code](https://docs.github.com/en/enterprise-cloud@latest/copilot/how-tos/configure-personal-settings/authenticate-to-ghecom)
+
+##### GitHub Enterprise Server
+
 GitHub Enterprise Server does not support remote server hosting. Please refer to [GitHub Enterprise Server and Enterprise Cloud with data residency (ghe.com)](#github-enterprise-server-and-enterprise-cloud-with-data-residency-ghecom) from the local server configuration.
 
 ---
 
 ## Local GitHub MCP Server
 
-[![Install with Docker in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=github&inputs=%5B%7B%22id%22%3A%22github_token%22%2C%22type%22%3A%22promptString%22%2C%22description%22%3A%22GitHub%20Personal%20Access%20Token%22%2C%22password%22%3Atrue%7D%5D&config=%7B%22command%22%3A%22docker%22%2C%22args%22%3A%5B%22run%22%2C%22-i%22%2C%22--rm%22%2C%22-e%22%2C%22GITHUB_PERSONAL_ACCESS_TOKEN%22%2C%22ghcr.io%2Fgithub%2Fgithub-mcp-server%22%5D%2C%22env%22%3A%7B%22GITHUB_PERSONAL_ACCESS_TOKEN%22%3A%22%24%7Binput%3Agithub_token%7D%22%7D%7D) [![Install with Docker in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=github&inputs=%5B%7B%22id%22%3A%22github_token%22%2C%22type%22%3A%22promptString%22%2C%22description%22%3A%22GitHub%20Personal%20Access%20Token%22%2C%22password%22%3Atrue%7D%5D&config=%7B%22command%22%3A%22docker%22%2C%22args%22%3A%5B%22run%22%2C%22-i%22%2C%22--rm%22%2C%22-e%22%2C%22GITHUB_PERSONAL_ACCESS_TOKEN%22%2C%22ghcr.io%2Fgithub%2Fgithub-mcp-server%22%5D%2C%22env%22%3A%7B%22GITHUB_PERSONAL_ACCESS_TOKEN%22%3A%22%24%7Binput%3Agithub_token%7D%22%7D%7D&quality=insiders)
+[![Install with Docker in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=github&config=%7B%22command%22%3A%22docker%22%2C%22args%22%3A%5B%22run%22%2C%22-i%22%2C%22--rm%22%2C%22-p%22%2C%22127.0.0.1%3A8085%3A8085%22%2C%22-e%22%2C%22GITHUB_OAUTH_CALLBACK_PORT%22%2C%22ghcr.io%2Fgithub%2Fgithub-mcp-server%22%5D%2C%22env%22%3A%7B%22GITHUB_OAUTH_CALLBACK_PORT%22%3A%228085%22%7D%7D) [![Install with Docker in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=github&config=%7B%22command%22%3A%22docker%22%2C%22args%22%3A%5B%22run%22%2C%22-i%22%2C%22--rm%22%2C%22-p%22%2C%22127.0.0.1%3A8085%3A8085%22%2C%22-e%22%2C%22GITHUB_OAUTH_CALLBACK_PORT%22%2C%22ghcr.io%2Fgithub%2Fgithub-mcp-server%22%5D%2C%22env%22%3A%7B%22GITHUB_OAUTH_CALLBACK_PORT%22%3A%228085%22%7D%7D&quality=insiders) [![Install with Docker in Visual Studio](https://img.shields.io/badge/Visual_Studio-Install_Server-C16FDE?style=flat-square&logo=visualstudio&logoColor=white)](https://aka.ms/vs/mcp-install?%7B%22name%22%3A%22github%22%2C%22command%22%3A%22docker%22%2C%22args%22%3A%5B%22run%22%2C%22-i%22%2C%22--rm%22%2C%22-p%22%2C%22127.0.0.1%3A8085%3A8085%22%2C%22-e%22%2C%22GITHUB_OAUTH_CALLBACK_PORT%3D8085%22%2C%22ghcr.io%2Fgithub%2Fgithub-mcp-server%22%5D%7D)
 
 ### Prerequisites
 
 1. To run the server in a container, you will need to have [Docker](https://www.docker.com/) installed.
-2. Once Docker is installed, you will also need to ensure Docker is running. The image is public; if you get errors on pull, you may have an expired token and need to `docker logout ghcr.io`.
-3. Lastly you will need to [Create a GitHub Personal Access Token](https://github.com/settings/personal-access-tokens/new).
-The MCP server can use many of the GitHub APIs, so enable the permissions that you feel comfortable granting your AI tools (to learn more about access tokens, please check out the [documentation](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)).
+2. Once Docker is installed, you will also need to ensure Docker is running. The Docker image is available at `ghcr.io/github/github-mcp-server`. The image is public; if you get errors on pull, you may have an expired token and need to `docker logout ghcr.io`.
+3. **Authentication.** On github.com you don't need to create anything up front — the one-click buttons above log you in with OAuth on first use (a browser-based flow; the token is kept in memory only). The Docker buttons publish a fixed callback port (`127.0.0.1:8085`) so the container's login callback is reachable. See **[Local Server OAuth Login](docs/oauth-login.md)** for how it works, headless/device-code fallback, and bringing your own OAuth or GitHub App (required for GitHub Enterprise Server and `ghe.com`).
+
+   Prefer a token? You can still authenticate with a [GitHub Personal Access Token](https://github.com/settings/personal-access-tokens/new) by setting `GITHUB_PERSONAL_ACCESS_TOKEN` instead (it takes precedence over OAuth). The MCP server can use many of the GitHub APIs, so enable the permissions that you feel comfortable granting your AI tools (to learn more about access tokens, please check out the [documentation](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)).
 
 <details><summary><b>Handling PATs Securely</b></summary>
 
 ### Environment Variables (Recommended)
+
 To keep your GitHub PAT secure and reusable across different MCP hosts:
 
 1. **Store your PAT in environment variables**
+
    ```bash
    export GITHUB_PAT=your_token_here
    ```
+
    Or create a `.env` file:
+
    ```env
    GITHUB_PAT=your_token_here
    ```
 
 2. **Protect your `.env` file**
+
    ```bash
    # Add to .gitignore to prevent accidental commits
    echo ".env" >> .gitignore
    ```
 
 3. **Reference the token in configurations**
+
    ```bash
    # CLI usage
-   claude mcp update github -e GITHUB_PERSONAL_ACCESS_TOKEN=$GITHUB_PAT
+   claude mcp add github -e GITHUB_PERSONAL_ACCESS_TOKEN=$GITHUB_PAT -- docker run -i --rm -e GITHUB_PERSONAL_ACCESS_TOKEN ghcr.io/github/github-mcp-server
 
    # In config files (where supported)
    "env": {
@@ -170,6 +235,7 @@ To keep your GitHub PAT secure and reusable across different MCP hosts:
 - **Regular rotation**: Update tokens periodically
 - **Never commit**: Keep tokens out of version control
 - **File permissions**: Restrict access to config files containing tokens
+
   ```bash
   chmod 600 ~/.your-app/config.json
   ```
@@ -181,8 +247,9 @@ To keep your GitHub PAT secure and reusable across different MCP hosts:
 The flag `--gh-host` and the environment variable `GITHUB_HOST` can be used to set
 the hostname for GitHub Enterprise Server or GitHub Enterprise Cloud with data residency.
 
-- For GitHub Enterprise Server, prefix the hostname with the `https://` URI scheme, as it otherwise defaults to `http://`, which GitHub Enterprise Server does not support.
+- For GitHub Enterprise Server, prefix the hostname with the `https://` URI scheme. HTTPS is required and enforced: non-HTTPS hosts are refused so that credentials are never sent over cleartext (the only exception is a loopback host such as `http://localhost` for local development).
 - For GitHub Enterprise Cloud with data residency, use `https://YOURSUBDOMAIN.ghe.com` as the hostname.
+
 ``` json
 "github": {
     "command": "docker",
@@ -213,7 +280,40 @@ More about using MCP server tools in VS Code's [agent mode documentation](https:
 
 Install in GitHub Copilot on other IDEs (JetBrains, Visual Studio, Eclipse, etc.)
 
-Add the following JSON block to your IDE's MCP settings.
+Add one of the following JSON blocks to your IDE's MCP settings.
+
+**Log in with OAuth (no token to create or store).** On github.com the official image already includes the app credentials, so you provide none yourself: it runs a browser-based login on first use and keeps the resulting token **in memory only**. In Docker this needs a fixed callback port published to loopback so the container's login callback is reachable:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "github": {
+        "command": "docker",
+        "args": [
+          "run",
+          "-i",
+          "--rm",
+          "-p",
+          "127.0.0.1:8085:8085",
+          "-e",
+          "GITHUB_OAUTH_CALLBACK_PORT",
+          "ghcr.io/github/github-mcp-server"
+        ],
+        "env": {
+          "GITHUB_OAUTH_CALLBACK_PORT": "8085"
+        }
+      }
+    }
+  }
+}
+```
+
+See **[Local Server OAuth Login](docs/oauth-login.md)** for the native-binary flow (no fixed port needed), the headless/device-code fallback, GitHub Enterprise Server / `ghe.com`, and bringing your own OAuth or GitHub App.
+
+For non-interactive stdio deployments, see **[GitHub App Authentication](docs/github-app-auth.md)**.
+
+**Or authenticate with a Personal Access Token.** Set `GITHUB_PERSONAL_ACCESS_TOKEN` instead (it takes precedence over OAuth):
 
 ```json
 {
@@ -287,11 +387,14 @@ Optionally, you can add a similar example (i.e. without the mcp key) to a file c
 
 For other MCP host applications, please refer to our installation guides:
 
+- **[Copilot CLI](docs/installation-guides/install-copilot-cli.md)** - Installation guide for GitHub Copilot CLI
 - **[GitHub Copilot in other IDEs](/docs/installation-guides/install-other-copilot-ides.md)** - Installation for JetBrains, Visual Studio, Eclipse, and Xcode with GitHub Copilot
 - **[Claude Code & Claude Desktop](docs/installation-guides/install-claude.md)** - Installation guide for Claude Code and Claude Desktop
 - **[Cursor](docs/installation-guides/install-cursor.md)** - Installation guide for Cursor IDE
 - **[Google Gemini CLI](docs/installation-guides/install-gemini-cli.md)** - Installation guide for Google Gemini CLI
+- **[OpenCode](docs/installation-guides/install-opencode.md)** - Installation guide for the OpenCode terminal agent
 - **[Windsurf](docs/installation-guides/install-windsurf.md)** - Installation guide for Windsurf IDE
+- **[Zed](docs/installation-guides/install-zed.md)** - Installation guide for Zed editor
 
 For a complete overview of all installation options, see our **[Installation Guides Index](docs/installation-guides)**.
 
@@ -300,7 +403,13 @@ For a complete overview of all installation options, see our **[Installation Gui
 ### Build from source
 
 If you don't have Docker, you can use `go build` to build the binary in the
-`cmd/github-mcp-server` directory, and use the `github-mcp-server stdio` command with the `GITHUB_PERSONAL_ACCESS_TOKEN` environment variable set to your token. To specify the output location of the build, use the `-o` flag. You should configure your server to use the built executable as its `command`. For example:
+`cmd/github-mcp-server` directory, and use the `github-mcp-server stdio` command with the `GITHUB_PERSONAL_ACCESS_TOKEN` environment variable set to your token. To specify the output location of the build, use the `-o` flag. You should configure your server to use the built executable as its `command`.
+
+STDIO API requests identify the server as `github-mcp-server/<version>` and retain the upstream MCP client's name/version in parentheses when available. Control characters, quotes, backslashes and parentheses in client metadata are escaped so the HTTP header remains valid; ordinary names, versions, spaces and printable Unicode are preserved. Release builds keep their release version. Source and default Docker builds with revision metadata use `vcs-<full-commit-sha>`. The Docker publishing workflow preserves tag versions, including prereleases, and lets branch, pull-request and nightly builds use the linked source revision. The `-dirty` marker applies only when both the revision and modified state come from embedded VCS metadata, never to a valid, explicitly supplied `main.commit`. This is a VCS build identifier, not a release number.
+
+Build the complete package with `go build -o github-mcp-server ./cmd/github-mcp-server` from a Git checkout to embed its VCS revision. For builds without VCS metadata, supply the actual release with `-ldflags '-X main.version=<release>'` or the full source revision with `-ldflags '-X main.commit=<sha>'`. Valid metadata is selected in this order: explicit release, explicit source revision, embedded VCS revision, then installed main-module version. Valid explicit revisions remain authoritative even if build-context filtering changes embedded VCS metadata. Missing or malformed candidates fall through to the next usable source. If none is available, STDIO still starts with the development label `dev` and emits a warning on stderr, leaving stdout available for the MCP protocol. Supply real release or revision metadata when version-specific attribution is needed.
+
+For example:
 
 ```JSON
 {
@@ -326,6 +435,8 @@ _Toolsets are not limited to Tools. Relevant MCP Resources and Prompts are also 
 
 When no toolsets are specified, [default toolsets](#default-toolset) are used.
 
+> **Looking for examples?** See the [Server Configuration Guide](./docs/server-configuration.md) for common recipes like minimal setups, read-only mode, and combining tools with toolsets.
+
 #### Specifying Toolsets
 
 To specify toolsets you want available to the LLM, you can pass an allow-list in two ways:
@@ -337,11 +448,43 @@ To specify toolsets you want available to the LLM, you can pass an allow-list in
    ```
 
 2. **Using Environment Variable**:
+
    ```bash
    GITHUB_TOOLSETS="repos,issues,pull_requests,actions,code_security" ./github-mcp-server
    ```
 
 The environment variable `GITHUB_TOOLSETS` takes precedence over the command line argument if both are provided.
+
+#### Specifying Individual Tools
+
+You can also configure specific tools using the `--tools` flag. Tools can be used independently or combined with toolsets for fine-grained control.
+
+1. **Using Command Line Argument**:
+
+   ```bash
+   github-mcp-server --tools get_file_contents,issue_read,create_pull_request
+   ```
+
+2. **Using Environment Variable**:
+
+   ```bash
+   GITHUB_TOOLS="get_file_contents,issue_read,create_pull_request" ./github-mcp-server
+   ```
+
+3. **Combining with Toolsets** (additive):
+
+   ```bash
+   github-mcp-server --toolsets repos,issues --tools get_gist
+   ```
+
+   This registers all tools from `repos` and `issues` toolsets, plus `get_gist`.
+
+**Important Notes:**
+
+- Tools and toolsets can be used together
+- Read-only mode takes priority: write tools are skipped if `--read-only` is set, even if explicitly requested via `--tools`
+- Tool names must match exactly (e.g., `get_file_contents`, not `getFileContents`). Invalid tool names will cause the server to fail at startup with an error message
+- When tools are renamed, old names are preserved as aliases for backward compatibility. See [Tool Renaming](docs/tool-renaming.md) for details.
 
 ### Using Toolsets With Docker
 
@@ -350,7 +493,26 @@ When using Docker, you can pass the toolsets as environment variables:
 ```bash
 docker run -i --rm \
   -e GITHUB_PERSONAL_ACCESS_TOKEN=<your-token> \
-  -e GITHUB_TOOLSETS="repos,issues,pull_requests,actions,code_security,experiments" \
+  -e GITHUB_TOOLSETS="repos,issues,pull_requests,actions,code_security" \
+  ghcr.io/github/github-mcp-server
+```
+
+### Using Tools With Docker
+
+When using Docker, you can pass specific tools as environment variables. You can also combine tools with toolsets:
+
+```bash
+# Tools only
+docker run -i --rm \
+  -e GITHUB_PERSONAL_ACCESS_TOKEN=<your-token> \
+  -e GITHUB_TOOLS="get_file_contents,issue_read,create_pull_request" \
+  ghcr.io/github/github-mcp-server
+
+# Tools combined with toolsets (additive)
+docker run -i --rm \
+  -e GITHUB_PERSONAL_ACCESS_TOKEN=<your-token> \
+  -e GITHUB_TOOLSETS="repos,issues" \
+  -e GITHUB_TOOLS="get_gist" \
   ghcr.io/github/github-mcp-server
 ```
 
@@ -371,9 +533,11 @@ GITHUB_TOOLSETS="all" ./github-mcp-server
 ```
 
 #### "default" toolset
+
 The default toolset `default` is the configuration that gets passed to the server if no toolsets are specified.
 
 The default configuration is:
+
 - context
 - repos
 - issues
@@ -386,34 +550,63 @@ To keep the default configuration and add additional toolsets:
 GITHUB_TOOLSETS="default,stargazers" ./github-mcp-server
 ```
 
+### Insiders Mode
+
+The local GitHub MCP Server offers an insiders version with early access to new features and experimental tools.
+
+1. **Using Command Line Argument**:
+
+   ```bash
+   ./github-mcp-server --insiders
+   ```
+
+2. **Using Environment Variable**:
+
+   ```bash
+   GITHUB_INSIDERS=true ./github-mcp-server
+   ```
+
+When using Docker:
+
+```bash
+docker run -i --rm \
+  -e GITHUB_PERSONAL_ACCESS_TOKEN=<your-token> \
+  -e GITHUB_INSIDERS=true \
+  ghcr.io/github/github-mcp-server
+```
+
 ### Available Toolsets
 
 The following sets of tools are available:
 
 <!-- START AUTOMATED TOOLSETS -->
-| Toolset                 | Description                                                   |
-| ----------------------- | ------------------------------------------------------------- |
-| `context`               | **Strongly recommended**: Tools that provide context about the current user and GitHub context you are operating in |
-| `actions` | GitHub Actions workflows and CI/CD operations |
-| `code_security` | Code security related tools, such as GitHub Code Scanning |
-| `dependabot` | Dependabot tools |
-| `discussions` | GitHub Discussions related tools |
-| `experiments` | Experimental features that are not considered stable yet |
-| `gists` | GitHub Gist related tools |
-| `issues` | GitHub Issues related tools |
-| `labels` | GitHub Labels related tools |
-| `notifications` | GitHub Notifications related tools |
-| `orgs` | GitHub Organization related tools |
-| `projects` | GitHub Projects related tools |
-| `pull_requests` | GitHub Pull Request related tools |
-| `repos` | GitHub Repository related tools |
-| `secret_protection` | Secret protection related tools, such as GitHub Secret Scanning |
-| `security_advisories` | Security advisories related tools |
-| `stargazers` | GitHub Stargazers related tools |
-| `users` | GitHub User related tools |
+|     | Toolset                 | Description                                                   |
+| --- | ----------------------- | ------------------------------------------------------------- |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/person-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/person-light.png"><img src="pkg/octicons/icons/person-light.png" width="20" height="20" alt="person"></picture> | `context`               | **Strongly recommended**: Tools that provide context about the current user and GitHub context you are operating in |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/workflow-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/workflow-light.png"><img src="pkg/octicons/icons/workflow-light.png" width="20" height="20" alt="workflow"></picture> | `actions` | GitHub Actions workflows and CI/CD operations |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/code-square-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/code-square-light.png"><img src="pkg/octicons/icons/code-square-light.png" width="20" height="20" alt="code-square"></picture> | `code_quality` | GitHub Code Quality related tools |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/codescan-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/codescan-light.png"><img src="pkg/octicons/icons/codescan-light.png" width="20" height="20" alt="codescan"></picture> | `code_security` | Code security related tools, such as GitHub Code Scanning |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/copilot-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/copilot-light.png"><img src="pkg/octicons/icons/copilot-light.png" width="20" height="20" alt="copilot"></picture> | `copilot` | Copilot related tools |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/copilot-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/copilot-light.png"><img src="pkg/octicons/icons/copilot-light.png" width="20" height="20" alt="copilot"></picture> | `copilot_issue_intents` | Opt-in Copilot issue assignment tools that carry intent metadata (rationale, confidence, suggestion) |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/dependabot-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/dependabot-light.png"><img src="pkg/octicons/icons/dependabot-light.png" width="20" height="20" alt="dependabot"></picture> | `dependabot` | Dependabot tools |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/comment-discussion-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/comment-discussion-light.png"><img src="pkg/octicons/icons/comment-discussion-light.png" width="20" height="20" alt="comment-discussion"></picture> | `discussions` | GitHub Discussions related tools |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/logo-gist-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/logo-gist-light.png"><img src="pkg/octicons/icons/logo-gist-light.png" width="20" height="20" alt="logo-gist"></picture> | `gists` | GitHub Gist related tools |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/git-branch-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/git-branch-light.png"><img src="pkg/octicons/icons/git-branch-light.png" width="20" height="20" alt="git-branch"></picture> | `git` | GitHub Git API related tools for low-level Git operations |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/law-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/law-light.png"><img src="pkg/octicons/icons/law-light.png" width="20" height="20" alt="law"></picture> | `governance` | Repository governance tools for managing rulesets and custom properties at the repository, organization, and enterprise levels |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/issue-opened-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/issue-opened-light.png"><img src="pkg/octicons/icons/issue-opened-light.png" width="20" height="20" alt="issue-opened"></picture> | `issues` | GitHub Issues related tools |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/tag-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/tag-light.png"><img src="pkg/octicons/icons/tag-light.png" width="20" height="20" alt="tag"></picture> | `labels` | GitHub Labels related tools |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/bell-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/bell-light.png"><img src="pkg/octicons/icons/bell-light.png" width="20" height="20" alt="bell"></picture> | `notifications` | GitHub Notifications related tools |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/organization-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/organization-light.png"><img src="pkg/octicons/icons/organization-light.png" width="20" height="20" alt="organization"></picture> | `orgs` | GitHub Organization related tools |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/project-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/project-light.png"><img src="pkg/octicons/icons/project-light.png" width="20" height="20" alt="project"></picture> | `projects` | GitHub Projects related tools |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/git-pull-request-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/git-pull-request-light.png"><img src="pkg/octicons/icons/git-pull-request-light.png" width="20" height="20" alt="git-pull-request"></picture> | `pull_requests` | GitHub Pull Request related tools |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/repo-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/repo-light.png"><img src="pkg/octicons/icons/repo-light.png" width="20" height="20" alt="repo"></picture> | `repos` | GitHub Repository related tools |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/shield-lock-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/shield-lock-light.png"><img src="pkg/octicons/icons/shield-lock-light.png" width="20" height="20" alt="shield-lock"></picture> | `secret_protection` | Secret protection related tools, such as GitHub Secret Scanning |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/shield-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/shield-light.png"><img src="pkg/octicons/icons/shield-light.png" width="20" height="20" alt="shield"></picture> | `security_advisories` | Security advisories related tools |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/star-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/star-light.png"><img src="pkg/octicons/icons/star-light.png" width="20" height="20" alt="star"></picture> | `stargazers` | GitHub Stargazers related tools |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/people-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/people-light.png"><img src="pkg/octicons/icons/people-light.png" width="20" height="20" alt="people"></picture> | `users` | GitHub User related tools |
 <!-- END AUTOMATED TOOLSETS -->
 
-### Additional Toolsets in Remote Github MCP Server
+### Additional Toolsets in Remote GitHub MCP Server
 
 | Toolset                 | Description                                                   |
 | ----------------------- | ------------------------------------------------------------- |
@@ -426,109 +619,84 @@ The following sets of tools are available:
 <!-- START AUTOMATED TOOLS -->
 <details>
 
-<summary>Actions</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/workflow-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/workflow-light.png"><img src="pkg/octicons/icons/workflow-light.png" width="20" height="20" alt="workflow"></picture> Actions</summary>
 
-- **cancel_workflow_run** - Cancel workflow run
+- **actions_get** - Get details of GitHub Actions resources (workflows, workflow runs, jobs, and artifacts)
+  - **OAuth Challenge Scopes**: `repo`
+  - `method`: The method to execute (string, required)
   - `owner`: Repository owner (string, required)
   - `repo`: Repository name (string, required)
-  - `run_id`: The unique identifier of the workflow run (number, required)
+  - `resource_id`: The unique identifier of the resource. This will vary based on the "method" provided, so ensure you provide the correct ID:
+    - Provide a workflow ID or workflow file name (e.g. ci.yaml) for 'get_workflow' method.
+    - Provide a workflow run ID for 'get_workflow_run', 'get_workflow_run_usage', and 'get_workflow_run_logs_url' methods.
+    - Provide an artifact ID for 'download_workflow_run_artifact' method.
+    - Provide a job ID for 'get_workflow_job' method.
+     (string, required)
 
-- **delete_workflow_run_logs** - Delete workflow logs
+- **actions_list** - List GitHub Actions workflows in a repository
+  - **OAuth Challenge Scopes**: `repo`
+  - `method`: The action to perform (string, required)
   - `owner`: Repository owner (string, required)
+  - `page`: Page number for pagination (default: 1) (number, optional)
+  - `perPage`: Results per page for pagination (default: 30, max: 100) (number, optional)
   - `repo`: Repository name (string, required)
-  - `run_id`: The unique identifier of the workflow run (number, required)
+  - `resource_id`: The unique identifier of the resource. This will vary based on the "method" provided, so ensure you provide the correct ID:
+    - Do not provide any resource ID for 'list_workflows' method.
+    - Provide a workflow ID or workflow file name (e.g. ci.yaml) for 'list_workflow_runs' method, or omit to list all workflow runs in the repository.
+    - Provide a workflow run ID for 'list_workflow_jobs' and 'list_workflow_run_artifacts' methods.
+     (string, optional)
+  - `workflow_jobs_filter`: Filters for workflow jobs. **ONLY** used when method is 'list_workflow_jobs' (object, optional)
+  - `workflow_runs_filter`: Filters for workflow runs. **ONLY** used when method is 'list_workflow_runs' (object, optional)
 
-- **download_workflow_run_artifact** - Download workflow artifact
-  - `artifact_id`: The unique identifier of the artifact (number, required)
+- **actions_run_trigger** - Trigger GitHub Actions workflow actions
+  - **OAuth Challenge Scopes**: `repo`
+  - `inputs`: Inputs the workflow accepts. Only used for 'run_workflow' method. (object, optional)
+  - `method`: The method to execute (string, required)
   - `owner`: Repository owner (string, required)
+  - `ref`: The git reference for the workflow. The reference can be a branch or tag name. Required for 'run_workflow' method. (string, optional)
   - `repo`: Repository name (string, required)
+  - `run_id`: The ID of the workflow run. Required for all methods except 'run_workflow'. (number, optional)
+  - `workflow_id`: The workflow ID (numeric) or workflow file name (e.g., main.yml, ci.yaml). Required for 'run_workflow' method. (string, optional)
 
-- **get_job_logs** - Get job logs
-  - `failed_only`: When true, gets logs for all failed jobs in run_id (boolean, optional)
-  - `job_id`: The unique identifier of the workflow job (required for single job logs) (number, optional)
+- **get_job_logs** - Get GitHub Actions workflow job logs
+  - **OAuth Challenge Scopes**: `repo`
+  - `failed_only`: When true, gets logs for all failed jobs in the workflow run specified by run_id. Requires run_id to be provided. (boolean, optional)
+  - `job_id`: The unique identifier of the workflow job. Required when getting logs for a single job. (number, optional)
   - `owner`: Repository owner (string, required)
   - `repo`: Repository name (string, required)
   - `return_content`: Returns actual log content instead of URLs (boolean, optional)
-  - `run_id`: Workflow run ID (required when using failed_only) (number, optional)
+  - `run_id`: The unique identifier of the workflow run. Required when failed_only is true to get logs for all failed jobs in the run. (number, optional)
   - `tail_lines`: Number of lines to return from the end of the log (number, optional)
-
-- **get_workflow_run** - Get workflow run
-  - `owner`: Repository owner (string, required)
-  - `repo`: Repository name (string, required)
-  - `run_id`: The unique identifier of the workflow run (number, required)
-
-- **get_workflow_run_logs** - Get workflow run logs
-  - `owner`: Repository owner (string, required)
-  - `repo`: Repository name (string, required)
-  - `run_id`: The unique identifier of the workflow run (number, required)
-
-- **get_workflow_run_usage** - Get workflow usage
-  - `owner`: Repository owner (string, required)
-  - `repo`: Repository name (string, required)
-  - `run_id`: The unique identifier of the workflow run (number, required)
-
-- **list_workflow_jobs** - List workflow jobs
-  - `filter`: Filters jobs by their completed_at timestamp (string, optional)
-  - `owner`: Repository owner (string, required)
-  - `page`: Page number for pagination (min 1) (number, optional)
-  - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
-  - `repo`: Repository name (string, required)
-  - `run_id`: The unique identifier of the workflow run (number, required)
-
-- **list_workflow_run_artifacts** - List workflow artifacts
-  - `owner`: Repository owner (string, required)
-  - `page`: Page number for pagination (min 1) (number, optional)
-  - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
-  - `repo`: Repository name (string, required)
-  - `run_id`: The unique identifier of the workflow run (number, required)
-
-- **list_workflow_runs** - List workflow runs
-  - `actor`: Returns someone's workflow runs. Use the login for the user who created the workflow run. (string, optional)
-  - `branch`: Returns workflow runs associated with a branch. Use the name of the branch. (string, optional)
-  - `event`: Returns workflow runs for a specific event type (string, optional)
-  - `owner`: Repository owner (string, required)
-  - `page`: Page number for pagination (min 1) (number, optional)
-  - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
-  - `repo`: Repository name (string, required)
-  - `status`: Returns workflow runs with the check run status (string, optional)
-  - `workflow_id`: The workflow ID or workflow file name (string, required)
-
-- **list_workflows** - List workflows
-  - `owner`: Repository owner (string, required)
-  - `page`: Page number for pagination (min 1) (number, optional)
-  - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
-  - `repo`: Repository name (string, required)
-
-- **rerun_failed_jobs** - Rerun failed jobs
-  - `owner`: Repository owner (string, required)
-  - `repo`: Repository name (string, required)
-  - `run_id`: The unique identifier of the workflow run (number, required)
-
-- **rerun_workflow_run** - Rerun workflow run
-  - `owner`: Repository owner (string, required)
-  - `repo`: Repository name (string, required)
-  - `run_id`: The unique identifier of the workflow run (number, required)
-
-- **run_workflow** - Run workflow
-  - `inputs`: Inputs the workflow accepts (object, optional)
-  - `owner`: Repository owner (string, required)
-  - `ref`: The git reference for the workflow. The reference can be a branch or tag name. (string, required)
-  - `repo`: Repository name (string, required)
-  - `workflow_id`: The workflow ID (numeric) or workflow file name (e.g., main.yml, ci.yaml) (string, required)
 
 </details>
 
 <details>
 
-<summary>Code Security</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/code-square-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/code-square-light.png"><img src="pkg/octicons/icons/code-square-light.png" width="20" height="20" alt="code-square"></picture> Code Quality</summary>
+
+- **get_code_quality_finding** - Get code quality finding
+  - **OAuth Challenge Scopes**: `repo`
+  - `findingNumber`: The number of the finding. (number, required)
+  - `owner`: The owner of the repository. (string, required)
+  - `repo`: The name of the repository. (string, required)
+
+</details>
+
+<details>
+
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/codescan-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/codescan-light.png"><img src="pkg/octicons/icons/codescan-light.png" width="20" height="20" alt="codescan"></picture> Code Security</summary>
 
 - **get_code_scanning_alert** - Get code scanning alert
+  - **OAuth Challenge Scopes**: `security_events`
   - `alertNumber`: The number of the alert. (number, required)
   - `owner`: The owner of the repository. (string, required)
   - `repo`: The name of the repository. (string, required)
 
 - **list_code_scanning_alerts** - List code scanning alerts
+  - **OAuth Challenge Scopes**: `security_events`
   - `owner`: The owner of the repository. (string, required)
+  - `page`: Page number for pagination (min 1) (number, optional)
+  - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
   - `ref`: The Git reference for the results you want to list. (string, optional)
   - `repo`: The name of the repository. (string, required)
   - `severity`: Filter code scanning alerts by severity (string, optional)
@@ -539,31 +707,81 @@ The following sets of tools are available:
 
 <details>
 
-<summary>Context</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/person-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/person-light.png"><img src="pkg/octicons/icons/person-light.png" width="20" height="20" alt="person"></picture> Context</summary>
 
 - **get_me** - Get my user profile
+  - **MCP App UI**: `ui://github-mcp-server/get-me`
   - No parameters required
 
 - **get_team_members** - Get team members
+  - **OAuth Challenge Scopes**: `read:org`
   - `org`: Organization login (owner) that contains the team. (string, required)
   - `team_slug`: Team slug (string, required)
 
 - **get_teams** - Get teams
+  - **OAuth Challenge Scopes**: `read:org`
   - `user`: Username to get teams for. If not provided, uses the authenticated user. (string, optional)
+
+- **ui_get** - Get UI data
+  - **OAuth Challenge Scopes**: `repo`, `read:org`
+  - `method`: The type of data to fetch (string, required)
+  - `owner`: Repository owner (required for all methods) (string, required)
+  - `repo`: Repository name (required for labels, assignees, milestones, branches, issue fields, reviewers) (string, optional)
 
 </details>
 
 <details>
 
-<summary>Dependabot</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/copilot-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/copilot-light.png"><img src="pkg/octicons/icons/copilot-light.png" width="20" height="20" alt="copilot"></picture> Copilot</summary>
+
+- **assign_copilot_to_issue** - Assign Copilot to issue
+  - **OAuth Challenge Scopes**: `repo`
+  - `base_ref`: Git reference (e.g., branch) that the agent will start its work from. If not specified, defaults to the repository's default branch (string, optional)
+  - `custom_instructions`: Optional custom instructions to guide the agent beyond the issue body. Use this to provide additional context, constraints, or guidance that is not captured in the issue description (string, optional)
+  - `issue_number`: Issue number (number, required)
+  - `owner`: Repository owner (string, required)
+  - `repo`: Repository name (string, required)
+
+- **request_copilot_review** - Request Copilot review
+  - **OAuth Challenge Scopes**: `repo`
+  - `owner`: Repository owner (string, required)
+  - `pullNumber`: Pull request number (number, required)
+  - `repo`: Repository name (string, required)
+
+</details>
+
+<details>
+
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/copilot-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/copilot-light.png"><img src="pkg/octicons/icons/copilot-light.png" width="20" height="20" alt="copilot"></picture> Copilot Issue Intents</summary>
+
+- **assign_copilot_to_issue_with_intent** - Assign Copilot to issue with intent
+  - **OAuth Challenge Scopes**: `repo`
+  - `base_ref`: Git reference (e.g., branch) that the agent will start its work from. If not specified, defaults to the repository's default branch. Ignored when is_suggestion is true (string, optional)
+  - `confidence`: How confident you are in this choice. 'HIGH' for clear signal or explicit user request, 'MEDIUM' for reasonable inference with some ambiguity, 'LOW' for best guess with limited signal. (string, required)
+  - `custom_instructions`: Optional custom instructions to guide the agent beyond the issue body. Ignored when is_suggestion is true (string, optional)
+  - `is_suggestion`: If true, records a pending Copilot assignment intent rather than launching the agent. Approval later supplies the launch context; base_ref and custom_instructions are ignored in this case. (boolean, required)
+  - `issue_number`: Issue number (number, required)
+  - `owner`: Repository owner (string, required)
+  - `rationale`: One concise sentence explaining what specifically about the issue led to choosing Copilot. State the concrete signal (e.g. 'Well-scoped task with clear acceptance criteria'). (string, required)
+  - `repo`: Repository name (string, required)
+
+</details>
+
+<details>
+
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/dependabot-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/dependabot-light.png"><img src="pkg/octicons/icons/dependabot-light.png" width="20" height="20" alt="dependabot"></picture> Dependabot</summary>
 
 - **get_dependabot_alert** - Get dependabot alert
+  - **OAuth Challenge Scopes**: `security_events`
   - `alertNumber`: The number of the alert. (number, required)
   - `owner`: The owner of the repository. (string, required)
   - `repo`: The name of the repository. (string, required)
 
 - **list_dependabot_alerts** - List dependabot alerts
+  - **OAuth Challenge Scopes**: `security_events`
+  - `after`: Cursor for pagination. Use the cursor from the previous response. (string, optional)
   - `owner`: The owner of the repository. (string, required)
+  - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
   - `repo`: The name of the repository. (string, required)
   - `severity`: Filter dependabot alerts by severity (string, optional)
   - `state`: Filter dependabot alerts by state. Defaults to open (string, optional)
@@ -572,26 +790,48 @@ The following sets of tools are available:
 
 <details>
 
-<summary>Discussions</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/comment-discussion-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/comment-discussion-light.png"><img src="pkg/octicons/icons/comment-discussion-light.png" width="20" height="20" alt="comment-discussion"></picture> Discussions</summary>
+
+- **discussion_comment_write** - Manage discussion comments
+  - **OAuth Challenge Scopes**: `repo`
+  - `body`: Comment content (required for 'add', 'reply', and 'update' methods) (string, optional)
+  - `commentNodeID`: The Node ID of the discussion comment (required for 'reply', 'update', 'delete', 'mark_answer', and 'unmark_answer' methods). For 'reply', this is the top-level comment to reply to; GitHub Discussions only support one level of nesting. (string, optional)
+  - `discussionNumber`: Discussion number (required for 'add' and 'reply' methods) (number, optional)
+  - `method`: Write operation to perform on a discussion comment.
+    Options are:
+    - 'add' - adds a new top-level comment to a discussion.
+    - 'reply' - replies to a top-level discussion comment (GitHub Discussions only support one level of nesting).
+    - 'update' - updates an existing discussion comment.
+    - 'delete' - deletes a discussion comment.
+    - 'mark_answer' - marks a discussion comment as the answer (Q&A only).
+    - 'unmark_answer' - unmarks a discussion comment as the answer (Q&A only).
+     (string, required)
+  - `owner`: Repository owner (required for 'add' and 'reply' methods) (string, optional)
+  - `repo`: Repository name (required for 'add' and 'reply' methods) (string, optional)
 
 - **get_discussion** - Get discussion
+  - **OAuth Challenge Scopes**: `repo`
   - `discussionNumber`: Discussion Number (number, required)
   - `owner`: Repository owner (string, required)
   - `repo`: Repository name (string, required)
 
 - **get_discussion_comments** - Get discussion comments
-  - `after`: Cursor for pagination. Use the endCursor from the previous page's PageInfo for GraphQL APIs. (string, optional)
+  - **OAuth Challenge Scopes**: `repo`
+  - `after`: Cursor for pagination. Use the cursor from the previous response. (string, optional)
   - `discussionNumber`: Discussion Number (number, required)
+  - `includeReplies`: When true, each top-level comment will include its replies nested within it (up to 100 replies per comment, which is the GitHub API maximum). Defaults to false. (boolean, optional)
   - `owner`: Repository owner (string, required)
   - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
   - `repo`: Repository name (string, required)
 
 - **list_discussion_categories** - List discussion categories
+  - **OAuth Challenge Scopes**: `repo`
   - `owner`: Repository owner (string, required)
   - `repo`: Repository name. If not provided, discussion categories will be queried at the organisation level. (string, optional)
 
 - **list_discussions** - List discussions
-  - `after`: Cursor for pagination. Use the endCursor from the previous page's PageInfo for GraphQL APIs. (string, optional)
+  - **OAuth Challenge Scopes**: `repo`
+  - `after`: Cursor for pagination. Use the cursor from the previous response. (string, optional)
   - `category`: Optional filter by discussion category ID. If provided, only discussions with this category are listed. (string, optional)
   - `direction`: Order direction. (string, optional)
   - `orderBy`: Order discussions by field. If provided, the 'direction' also needs to be provided. (string, optional)
@@ -603,13 +843,17 @@ The following sets of tools are available:
 
 <details>
 
-<summary>Gists</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/logo-gist-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/logo-gist-light.png"><img src="pkg/octicons/icons/logo-gist-light.png" width="20" height="20" alt="logo-gist"></picture> Gists</summary>
 
 - **create_gist** - Create Gist
+  - **OAuth Challenge Scopes**: `gist`
   - `content`: Content for simple single-file gist creation (string, required)
   - `description`: Description of the gist (string, optional)
   - `filename`: Filename for simple single-file gist creation (string, required)
   - `public`: Whether the gist is public (boolean, optional)
+
+- **get_gist** - Get Gist Content
+  - `gist_id`: The ID of the gist (string, required)
 
 - **list_gists** - List Gists
   - `page`: Page number for pagination (min 1) (number, optional)
@@ -618,6 +862,7 @@ The following sets of tools are available:
   - `username`: GitHub username (omit for authenticated user's gists) (string, optional)
 
 - **update_gist** - Update Gist
+  - **OAuth Challenge Scopes**: `gist`
   - `content`: Content for the file (string, required)
   - `description`: Updated description of the gist (string, optional)
   - `filename`: Filename to update or create (string, required)
@@ -627,59 +872,169 @@ The following sets of tools are available:
 
 <details>
 
-<summary>Issues</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/git-branch-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/git-branch-light.png"><img src="pkg/octicons/icons/git-branch-light.png" width="20" height="20" alt="git-branch"></picture> Git</summary>
 
-- **add_issue_comment** - Add comment to issue
-  - `body`: Comment content (string, required)
-  - `issue_number`: Issue number to comment on (number, required)
-  - `owner`: Repository owner (string, required)
+- **get_repository_tree** - Get repository tree
+  - **OAuth Challenge Scopes**: `repo`
+  - `owner`: Repository owner (username or organization) (string, required)
+  - `path_filter`: Optional path prefix to filter the tree results (e.g., 'src/' to only show files in the src directory) (string, optional)
+  - `recursive`: Setting this parameter to true returns the objects or subtrees referenced by the tree. Default is false (boolean, optional)
   - `repo`: Repository name (string, required)
+  - `tree_sha`: The SHA1 value or ref (branch or tag) name of the tree. Defaults to the repository's default branch (string, optional)
 
-- **add_sub_issue** - Add sub-issue
-  - `issue_number`: The number of the parent issue (number, required)
-  - `owner`: Repository owner (string, required)
-  - `replace_parent`: When true, replaces the sub-issue's current parent issue (boolean, optional)
-  - `repo`: Repository name (string, required)
-  - `sub_issue_id`: The ID of the sub-issue to add. ID is not the same as issue number (number, required)
+</details>
 
-- **assign_copilot_to_issue** - Assign Copilot to issue
-  - `issueNumber`: Issue number (number, required)
-  - `owner`: Repository owner (string, required)
-  - `repo`: Repository name (string, required)
+<details>
 
-- **create_issue** - Open new issue
-  - `assignees`: Usernames to assign to this issue (string[], optional)
-  - `body`: Issue body content (string, optional)
-  - `labels`: Labels to apply to this issue (string[], optional)
-  - `milestone`: Milestone number (number, optional)
-  - `owner`: Repository owner (string, required)
-  - `repo`: Repository name (string, required)
-  - `title`: Issue title (string, required)
-  - `type`: Type of this issue (string, optional)
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/law-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/law-light.png"><img src="pkg/octicons/icons/law-light.png" width="20" height="20" alt="law"></picture> Governance</summary>
 
-- **get_issue** - Get issue details
-  - `issue_number`: The number of the issue (number, required)
-  - `owner`: The owner of the repository (string, required)
-  - `repo`: The name of the repository (string, required)
+- **create_repository_ruleset** - Create repository ruleset
+  - **OAuth Challenge Scopes**: `repo`, `admin:org`, `admin:enterprise`
+  - `bypass_actors`: The actors that can bypass the rules in this ruleset (object[], optional)
+  - `conditions`: Conditions for when this ruleset applies, e.g. {"ref_name": {"include": ["refs/heads/main"], "exclude": []}} (object, optional)
+  - `enforcement`: The enforcement level of the ruleset. 'evaluate' allows admins to test rules before enforcing them (string, required)
+  - `enterprise`: Enterprise slug. Required when level is 'enterprise'. (string, optional)
+  - `level`: The level at which the ruleset is configured:
+    - 'repository': A ruleset on a single repository (requires 'owner' and 'repo').
+    - 'organization': A ruleset covering repositories in an organization (requires 'org').
+    - 'enterprise': A ruleset covering repositories across an enterprise (requires 'enterprise'). (string, required)
+  - `name`: The name of the ruleset (string, required)
+  - `org`: Organization name. Required when level is 'organization'. (string, optional)
+  - `owner`: Repository owner. Required when level is 'repository'. (string, optional)
+  - `repo`: Repository name. Required when level is 'repository'. (string, optional)
+  - `rules`: An array of rules within the ruleset. Each rule is an object with a 'type' (e.g. 'creation', 'deletion', 'non_fast_forward', 'required_signatures', 'pull_request', 'required_status_checks') and, for rules that need configuration, a 'parameters' object (object[], required)
+  - `target`: The target of the ruleset. Defaults to 'branch'. 'repository' is only valid for 'organization' and 'enterprise' level rulesets. (string, optional)
 
-- **get_issue_comments** - Get issue comments
-  - `issue_number`: Issue number (number, required)
-  - `owner`: Repository owner (string, required)
+- **custom_properties_read** - Read custom properties
+  - **OAuth Challenge Scopes**: `repo`, `read:org`, `read:enterprise`
+  - `enterprise`: Enterprise slug. Required when level is 'enterprise'. (string, optional)
+  - `level`: The level at which custom properties are managed:
+    - 'repository': The custom property VALUES assigned to a repository (requires 'owner' and 'repo').
+    - 'organization': The custom property DEFINITIONS (schema) for an organization (requires 'org').
+    - 'enterprise': The custom property DEFINITIONS (schema) for an enterprise (requires 'enterprise'). (string, required)
+  - `org`: Organization name. Required when level is 'organization'. (string, optional)
+  - `owner`: Repository owner. Required when level is 'repository'. (string, optional)
+  - `repo`: Repository name. Required when level is 'repository'. (string, optional)
+
+- **custom_properties_write** - Set custom properties
+  - **OAuth Challenge Scopes**: `repo`, `admin:org`, `admin:enterprise`
+  - `enterprise`: Enterprise slug. Required when level is 'enterprise'. (string, optional)
+  - `level`: The level at which custom properties are managed:
+    - 'repository': The custom property VALUES assigned to a repository (requires 'owner' and 'repo').
+    - 'organization': The custom property DEFINITIONS (schema) for an organization (requires 'org').
+    - 'enterprise': The custom property DEFINITIONS (schema) for an enterprise (requires 'enterprise'). (string, required)
+  - `org`: Organization name. Required when level is 'organization'. (string, optional)
+  - `owner`: Repository owner. Required when level is 'repository'. (string, optional)
+  - `properties`: The custom properties to create or update. At the repository level each item assigns a value ('property_name' and 'value'); at the organization and enterprise levels each item defines the schema ('property_name' and 'value_type', plus optional definition fields). (object[], required)
+  - `repo`: Repository name. Required when level is 'repository'. (string, optional)
+
+- **repository_ruleset_read** - Read repository rulesets
+  - **OAuth Challenge Scopes**: `repo`, `read:org`, `read:enterprise`
+  - `actor_name`: The handle for the GitHub user account to filter rule suites on. Used by the 'list_rule_suites' method. (string, optional)
+  - `branch`: Branch name. Required for the 'get_rules_for_branch' method. (string, optional)
+  - `enterprise`: Enterprise slug. Required when level is 'enterprise'. (string, optional)
+  - `evaluate_status`: Filter rule suites by ruleset evaluation mode. Used by the 'list_rule_suites' method. (string, optional)
+  - `includes_parents`: Include rulesets configured at higher levels that also apply. Defaults to true. Used by the 'get' and 'list' methods at the repository level. (boolean, optional)
+  - `level`: The level at which the ruleset is configured:
+    - 'repository': A ruleset on a single repository (requires 'owner' and 'repo').
+    - 'organization': A ruleset covering repositories in an organization (requires 'org').
+    - 'enterprise': A ruleset covering repositories across an enterprise (requires 'enterprise'). (string, required)
+  - `method`: Operation to perform:
+    - 'get': Get a specific ruleset by ID (requires 'ruleset_id'). Supported at every level.
+    - 'list': List all rulesets. Supported at every level.
+    - 'get_rules_for_branch': Get all rules that apply to a branch (requires 'branch'). Repository level only.
+    - 'list_rule_suites': List rule suites, the evaluations of rules against pushes. Repository and organization levels only.
+    - 'get_rule_suite': Get a specific rule suite by ID (requires 'rule_suite_id'). Repository and organization levels only. (string, required)
+  - `org`: Organization name. Required when level is 'organization'. (string, optional)
+  - `owner`: Repository owner. Required when level is 'repository'. (string, optional)
   - `page`: Page number for pagination (min 1) (number, optional)
   - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
+  - `ref`: The name of the ref (branch, tag, etc.) to filter rule suites by. Used by the 'list_rule_suites' method. (string, optional)
+  - `repo`: Repository name. Required when level is 'repository'. (string, optional)
+  - `repository_name`: Repository name to filter rule suites by. Used by the 'list_rule_suites' method at the organization level. (string, optional)
+  - `rule_suite_id`: Rule suite ID. Required for the 'get_rule_suite' method. (number, optional)
+  - `rule_suite_result`: The rule suite result to filter by. Used by the 'list_rule_suites' method. (string, optional)
+  - `ruleset_id`: Ruleset ID. Required for the 'get' method. (number, optional)
+  - `time_period`: The time period to filter rule suites by. Used by the 'list_rule_suites' method. (string, optional)
+
+</details>
+
+<details>
+
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/issue-opened-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/issue-opened-light.png"><img src="pkg/octicons/icons/issue-opened-light.png" width="20" height="20" alt="issue-opened"></picture> Issues</summary>
+
+- **add_issue_comment** - Add comment to issue or pull request
+  - **OAuth Challenge Scopes**: `repo`
+  - `body`: Comment content. Required unless reaction is provided. (string, optional)
+  - `comment_id`: The numeric ID of the issue or pull request comment to react to. Use this for reactions to comments; omit it to react to the issue or pull request itself. Cannot be combined with body. (integer, optional)
+  - `issue_number`: Issue or pull request number to comment on or react to. (number, required)
+  - `owner`: Repository owner (string, required)
+  - `reaction`: Emoji reaction to add. Required unless body is provided. (string, optional)
   - `repo`: Repository name (string, required)
 
-- **get_label** - Get a specific label from a repository.
+- **get_label** - Get a specific label from a repository
+  - **OAuth Challenge Scopes**: `repo`
   - `name`: Label name. (string, required)
   - `owner`: Repository owner (username or organization name) (string, required)
   - `repo`: Repository name (string, required)
 
+- **issue_read** - Get issue details
+  - **OAuth Challenge Scopes**: `repo`
+  - `issue_number`: The number of the issue (number, required)
+  - `method`: The read operation to perform on a single issue.
+    Options are:
+    1. get - Get issue details. Also returns best-effort hierarchy flags (`has_parent`, `has_children`); `parent` and `sub_issues_summary` are optional relationship summaries, and `closed_by_pull_requests` summarizes the pull requests configured to close the issue as `total_count` plus up to 5 `references`.
+    2. get_comments - Get issue comments.
+    3. get_sub_issues - Get sub-issues (children) of the issue.
+    4. get_parent - Get the parent issue, if this issue is a sub-issue of another.
+    5. get_labels - Get labels assigned to the issue.
+     (string, required)
+  - `owner`: The owner of the repository (string, required)
+  - `page`: Page number for pagination (min 1) (number, optional)
+  - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
+  - `repo`: The name of the repository (string, required)
+
+- **issue_write** - Create or update issue/pull request
+  - **OAuth Challenge Scopes**: `repo`
+  - **MCP App UI**: `ui://github-mcp-server/issue-write`
+  - `assignees`: Usernames to assign to this issue (string[], optional)
+  - `body`: Issue body content (string, optional)
+  - `duplicate_of`: Issue number that this issue is a duplicate of. Required when state_reason is 'duplicate'. (number, optional)
+  - `issue_fields`: Issue field values to set or clear. Each item requires 'field_name' and exactly one of 'value', 'field_option_name', or 'delete: true'. (object[], optional)
+  - `issue_number`: Issue number to update (number, optional)
+  - `labels`: Labels to apply to this issue (string[], optional)
+  - `method`: Write operation to perform on a single issue.
+    Options are:
+    - 'create' - creates a new issue.
+    - 'update' - updates an existing issue.
+     (string, required)
+  - `milestone`: Milestone number (number, optional)
+  - `owner`: Repository owner (string, required)
+  - `parent_issue_number`: Issue number of the parent issue. Only used when method is 'create' and cannot be combined with issue_fields. The new issue is created and attached to this parent in the same operation. (number, optional)
+  - `parent_owner`: Repository owner of the parent issue. Must be provided with parent_repo. Omit both to use owner and repo. Only used when method is 'create' and parent_issue_number is provided. (string, optional)
+  - `parent_repo`: Repository name of the parent issue. Must be provided with parent_owner. Omit both to use owner and repo. Only used when method is 'create' and parent_issue_number is provided. (string, optional)
+  - `repo`: Repository name (string, required)
+  - `state`: New state (string, optional)
+  - `state_reason`: Reason for the state change. Ignored unless state is changed. (string, optional)
+  - `title`: Issue title (string, optional)
+  - `type`: Type of this issue. For updates, pass null to remove the current type. Only use if issue types are enabled for this repository. Use list_issue_types to get valid type values for this repository or its owner organization. If the repository doesn't support issue types, omit this parameter. (string | null, optional)
+
+- **list_issue_fields** - List issue fields
+  - **OAuth Challenge Scopes**: `repo`, `read:org`
+  - `owner`: The account owner of the repository or organization. The name is not case sensitive. (string, required)
+  - `repo`: The name of the repository. When provided, returns fields for this specific repository (inherited from its organization). When omitted, returns org-level fields directly. (string, optional)
+
 - **list_issue_types** - List available issue types
-  - `owner`: The organization owner of the repository (string, required)
+  - **OAuth Challenge Scopes**: `repo`, `read:org`
+  - `owner`: The account owner of the repository or organization. (string, required)
+  - `repo`: The name of the repository. When provided, returns issue types for this specific repository. When omitted, returns org-level issue types directly. (string, optional)
 
 - **list_issues** - List issues
-  - `after`: Cursor for pagination. Use the endCursor from the previous page's PageInfo for GraphQL APIs. (string, optional)
+  - **OAuth Challenge Scopes**: `repo`
+  - `after`: Cursor for pagination. Use the cursor from the previous response. (string, optional)
   - `direction`: Order direction. If provided, the 'orderBy' also needs to be provided. (string, optional)
+  - `field_filters`: Filter by custom issue field values. Each entry takes a field_name and a value; the server looks up the field and coerces the value to its type (single-select option name, text, number, or YYYY-MM-DD date). (object[], optional)
+  - `fields`: Subset of fields to return for each issue. If omitted, all fields are returned. Use this to reduce response size when you only need specific fields; omitting 'body' and 'field_values' in particular drops the largest per-result data. (string[], optional)
   - `labels`: Filter by labels (string[], optional)
   - `orderBy`: Order issues by field. If provided, the 'direction' also needs to be provided. (string, optional)
   - `owner`: Repository owner (string, required)
@@ -688,67 +1043,55 @@ The following sets of tools are available:
   - `since`: Filter by date (ISO 8601 timestamp) (string, optional)
   - `state`: Filter by state, by default both open and closed issues are returned when not provided (string, optional)
 
-- **list_label** - List labels from a repository or an issue
-  - `issue_number`: Issue number - if provided, lists labels on the specific issue (number, optional)
-  - `owner`: Repository owner (username or organization name) - required for all operations (string, required)
-  - `repo`: Repository name - required for all operations (string, required)
-
-- **list_sub_issues** - List sub-issues
-  - `issue_number`: Issue number (number, required)
-  - `owner`: Repository owner (string, required)
-  - `page`: Page number for pagination (default: 1) (number, optional)
-  - `per_page`: Number of results per page (max 100, default: 30) (number, optional)
-  - `repo`: Repository name (string, required)
-
-- **remove_sub_issue** - Remove sub-issue
-  - `issue_number`: The number of the parent issue (number, required)
-  - `owner`: Repository owner (string, required)
-  - `repo`: Repository name (string, required)
-  - `sub_issue_id`: The ID of the sub-issue to remove. ID is not the same as issue number (number, required)
-
-- **reprioritize_sub_issue** - Reprioritize sub-issue
-  - `after_id`: The ID of the sub-issue to be prioritized after (either after_id OR before_id should be specified) (number, optional)
-  - `before_id`: The ID of the sub-issue to be prioritized before (either after_id OR before_id should be specified) (number, optional)
-  - `issue_number`: The number of the parent issue (number, required)
-  - `owner`: Repository owner (string, required)
-  - `repo`: Repository name (string, required)
-  - `sub_issue_id`: The ID of the sub-issue to reprioritize. ID is not the same as issue number (number, required)
-
 - **search_issues** - Search issues
+  - **OAuth Challenge Scopes**: `repo`
+  - `fields`: Subset of fields to return for each issue result. If omitted, all fields are returned. Use this to reduce response size when you only need specific fields; omitting 'body', 'reactions', and 'labels' in particular drops the largest per-result data. (string[], optional)
   - `order`: Sort order (string, optional)
   - `owner`: Optional repository owner. If provided with repo, only issues for this repository are listed. (string, optional)
   - `page`: Page number for pagination (min 1) (number, optional)
   - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
-  - `query`: Search query using GitHub issues search syntax (string, required)
+  - `query`: The search query, as natural language. When the user gives alternative wordings, include them as plain words rather than joining them with OR. (string, required)
   - `repo`: Optional repository name. If provided with owner, only issues for this repository are listed. (string, optional)
   - `sort`: Sort field by number of matches of categories, defaults to best match (string, optional)
 
-- **update_issue** - Edit issue
-  - `assignees`: New assignees (string[], optional)
-  - `body`: New description (string, optional)
-  - `duplicate_of`: Issue number that this issue is a duplicate of. Only used when state_reason is 'duplicate'. (number, optional)
-  - `issue_number`: Issue number to update (number, required)
-  - `labels`: New labels (string[], optional)
-  - `milestone`: New milestone number (number, optional)
+- **sub_issue_write** - Change sub-issue
+  - **OAuth Challenge Scopes**: `repo`
+  - `after_id`: The ID of the sub-issue to be prioritized after (either after_id OR before_id should be specified) (number, optional)
+  - `before_id`: The ID of the sub-issue to be prioritized before (either after_id OR before_id should be specified) (number, optional)
+  - `issue_number`: The number of the parent issue (number, required)
+  - `method`: The action to perform on a single sub-issue
+    Options are:
+    - 'add' - add a sub-issue to a parent issue in a GitHub repository.
+    - 'remove' - remove a sub-issue from a parent issue in a GitHub repository.
+    - 'reprioritize' - change the order of sub-issues within a parent issue in a GitHub repository. Use either 'after_id' or 'before_id' to specify the new position.
+    Writes issue hierarchy. To move a sub-issue to a new parent, use `add` with `replace_parent=true`; there is no writable parent field.
+     (string, required)
+  - `owner`: Repository owner (string, required)
+  - `replace_parent`: When true, replaces the sub-issue's current parent issue. Use with 'add' method only. (boolean, optional)
+  - `repo`: Repository name (string, required)
+  - `sub_issue_id`: The ID of the sub-issue to add. ID is not the same as issue number (number, required)
+
+- **update_issue_comment** - Update issue comment
+  - **OAuth Challenge Scopes**: `repo`
+  - `body`: New comment content (string, required)
+  - `comment_id`: The numeric ID of the issue or pull request conversation comment to update. Do not use a pull request review comment ID. (integer, required)
   - `owner`: Repository owner (string, required)
   - `repo`: Repository name (string, required)
-  - `state`: New state (string, optional)
-  - `state_reason`: Reason for the state change. Ignored unless state is changed. (string, optional)
-  - `title`: New title (string, optional)
-  - `type`: New issue type (string, optional)
 
 </details>
 
 <details>
 
-<summary>Labels</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/tag-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/tag-light.png"><img src="pkg/octicons/icons/tag-light.png" width="20" height="20" alt="tag"></picture> Labels</summary>
 
-- **get_label** - Get a specific label from a repository.
+- **get_label** - Get a specific label from a repository
+  - **OAuth Challenge Scopes**: `repo`
   - `name`: Label name. (string, required)
   - `owner`: Repository owner (username or organization name) (string, required)
   - `repo`: Repository name (string, required)
 
-- **label_write** - Write operations on repository labels.
+- **label_write** - Write operations on repository labels
+  - **OAuth Challenge Scopes**: `repo`
   - `color`: Label color as 6-character hex code without '#' prefix (e.g., 'f29513'). Required for 'create', optional for 'update'. (string, optional)
   - `description`: Label description text. Optional for 'create' and 'update'. (string, optional)
   - `method`: Operation to perform: 'create', 'update', or 'delete' (string, required)
@@ -757,8 +1100,8 @@ The following sets of tools are available:
   - `owner`: Repository owner (username or organization name) (string, required)
   - `repo`: Repository name (string, required)
 
-- **list_label** - List labels from a repository or an issue
-  - `issue_number`: Issue number - if provided, lists labels on the specific issue (number, optional)
+- **list_label** - List labels from a repository
+  - **OAuth Challenge Scopes**: `repo`
   - `owner`: Repository owner (username or organization name) - required for all operations (string, required)
   - `repo`: Repository name - required for all operations (string, required)
 
@@ -766,16 +1109,19 @@ The following sets of tools are available:
 
 <details>
 
-<summary>Notifications</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/bell-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/bell-light.png"><img src="pkg/octicons/icons/bell-light.png" width="20" height="20" alt="bell"></picture> Notifications</summary>
 
 - **dismiss_notification** - Dismiss notification
-  - `state`: The new state of the notification (read/done) (string, optional)
+  - **OAuth Challenge Scopes**: `notifications`
+  - `state`: The new state of the notification (read/done) (string, required)
   - `threadID`: The ID of the notification thread (string, required)
 
 - **get_notification_details** - Get notification details
+  - **OAuth Challenge Scopes**: `notifications`
   - `notificationID`: The ID of the notification (string, required)
 
 - **list_notifications** - List notifications
+  - **OAuth Challenge Scopes**: `notifications`
   - `before`: Only show notifications updated before the given time (ISO 8601 format) (string, optional)
   - `filter`: Filter notifications to, use default unless specified. Read notifications are ones that have already been acknowledged by the user. Participating notifications are those that the user is directly involved in, such as issues or pull requests they have commented on or created. (string, optional)
   - `owner`: Optional repository owner. If provided with repo, only notifications for this repository are listed. (string, optional)
@@ -785,15 +1131,18 @@ The following sets of tools are available:
   - `since`: Only show notifications updated after the given time (ISO 8601 format) (string, optional)
 
 - **manage_notification_subscription** - Manage notification subscription
+  - **OAuth Challenge Scopes**: `notifications`
   - `action`: Action to perform: ignore, watch, or delete the notification subscription. (string, required)
   - `notificationID`: The ID of the notification thread. (string, required)
 
 - **manage_repository_notification_subscription** - Manage repository notification subscription
+  - **OAuth Challenge Scopes**: `notifications`
   - `action`: Action to perform: ignore, watch, or delete the repository notification subscription. (string, required)
   - `owner`: The account owner of the repository. (string, required)
   - `repo`: The name of the repository. (string, required)
 
 - **mark_all_notifications_read** - Mark all notifications as read
+  - **OAuth Challenge Scopes**: `notifications`
   - `lastReadAt`: Describes the last point that notifications were checked (optional). Default: Now (string, optional)
   - `owner`: Optional repository owner. If provided with repo, only notifications for this repository are marked as read. (string, optional)
   - `repo`: Optional repository name. If provided with owner, only notifications for this repository are marked as read. (string, optional)
@@ -802,9 +1151,10 @@ The following sets of tools are available:
 
 <details>
 
-<summary>Organizations</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/organization-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/organization-light.png"><img src="pkg/octicons/icons/organization-light.png" width="20" height="20" alt="organization"></picture> Organizations</summary>
 
 - **search_orgs** - Search organizations
+  - **OAuth Challenge Scopes**: `read:org`
   - `order`: Sort order (string, optional)
   - `page`: Page number for pagination (min 1) (number, optional)
   - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
@@ -815,71 +1165,71 @@ The following sets of tools are available:
 
 <details>
 
-<summary>Projects</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/project-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/project-light.png"><img src="pkg/octicons/icons/project-light.png" width="20" height="20" alt="project"></picture> Projects</summary>
 
-- **add_project_item** - Add project item
-  - `item_id`: The numeric ID of the issue or pull request to add to the project. (number, required)
-  - `item_type`: The item's type, either issue or pull_request. (string, required)
-  - `owner`: If owner_type == user it is the handle for the GitHub user account. If owner_type == org it is the name of the organization. The name is not case sensitive. (string, required)
-  - `owner_type`: Owner type (string, required)
-  - `project_number`: The project's number. (number, required)
+- **projects_get** - Get details of GitHub Projects resources
+  - **OAuth Challenge Scopes**: `read:project`
+  - `field_id`: The field's ID. Required for 'get_project_field' method. (number, optional)
+  - `field_names`: Specific list of field names to include in the response when getting a project item (e.g. ["Status", "Priority"]). Resolved server-side to field IDs — pass this instead of 'fields' when you only know the human-readable names. Mutually exclusive with 'fields' — provide one, not both. Only used for 'get_project_item' method. (string[], optional)
+  - `fields`: Specific list of field IDs to include in the response when getting a project item (e.g. ["102589", "985201", "169875"]). If neither 'fields' nor 'field_names' is provided, only the title field is included. Mutually exclusive with 'field_names' — provide one, not both. Only used for 'get_project_item' method. (string[], optional)
+  - `item_id`: The item's ID. Required for 'get_project_item' method. (number, optional)
+  - `method`: The method to execute (string, required)
+  - `owner`: The owner (user or organization login). The name is not case sensitive. (string, optional)
+  - `owner_type`: Owner type (user or org). If not provided, will be automatically detected. (string, optional)
+  - `project_number`: The project's number. (number, optional)
+  - `status_update_id`: The node ID of the project status update. Required for 'get_project_status_update' method. (string, optional)
+  - `view_id`: The node ID of the project view. Required for 'get_project_view' method. (string, optional)
 
-- **delete_project_item** - Delete project item
-  - `item_id`: The internal project item ID to delete from the project (not the issue or pull request ID). (number, required)
-  - `owner`: If owner_type == user it is the handle for the GitHub user account. If owner_type == org it is the name of the organization. The name is not case sensitive. (string, required)
-  - `owner_type`: Owner type (string, required)
-  - `project_number`: The project's number. (number, required)
+- **projects_list** - List GitHub Projects resources
+  - **OAuth Challenge Scopes**: `read:project`
+  - `after`: Forward pagination cursor from previous pageInfo.nextCursor. (string, optional)
+  - `before`: Backward pagination cursor from previous pageInfo.prevCursor (rare). (string, optional)
+  - `field_names`: Field names to include when listing project items (e.g. ["Status", "Priority"]). Resolved server-side to field IDs — pass this instead of 'fields' when you only know the human-readable names. Names that fail to resolve return a structured error. Mutually exclusive with 'fields' — provide one, not both. Only used for 'list_project_items' method. (string[], optional)
+  - `fields`: Field IDs to include when listing project items (e.g. ["102589", "985201"]). CRITICAL: Always provide to get field values. Without this (and without 'field_names'), only titles returned. Mutually exclusive with 'field_names' — provide one, not both. Only used for 'list_project_items' method. (string[], optional)
+  - `method`: The action to perform (string, required)
+  - `owner`: The owner (user or organization login). The name is not case sensitive. (string, required)
+  - `owner_type`: Owner type (user or org). If not provided, will automatically try both. (string, optional)
+  - `perPage`: Results per page (max 50) (number, optional)
+  - `project_number`: The project's number. Required for 'list_project_fields', 'list_project_items', 'list_project_views', and 'list_project_status_updates' methods. (number, optional)
+  - `query`: Filter/query string. For list_projects: filter by title text and state (e.g. "roadmap is:open"). For list_project_items: advanced filtering using GitHub's project filtering syntax. (string, optional)
 
-- **get_project** - Get project
-  - `owner`: If owner_type == user it is the handle for the GitHub user account. If owner_type == org it is the name of the organization. The name is not case sensitive. (string, required)
-  - `owner_type`: Owner type (string, required)
-  - `project_number`: The project's number (number, required)
-
-- **get_project_field** - Get project field
-  - `field_id`: The field's id. (number, required)
-  - `owner`: If owner_type == user it is the handle for the GitHub user account. If owner_type == org it is the name of the organization. The name is not case sensitive. (string, required)
-  - `owner_type`: Owner type (string, required)
-  - `project_number`: The project's number. (number, required)
-
-- **get_project_item** - Get project item
-  - `item_id`: The item's ID. (number, required)
-  - `owner`: If owner_type == user it is the handle for the GitHub user account. If owner_type == org it is the name of the organization. The name is not case sensitive. (string, required)
-  - `owner_type`: Owner type (string, required)
-  - `project_number`: The project's number. (number, required)
-
-- **list_project_fields** - List project fields
-  - `owner`: If owner_type == user it is the handle for the GitHub user account. If owner_type == org it is the name of the organization. The name is not case sensitive. (string, required)
-  - `owner_type`: Owner type (string, required)
-  - `per_page`: Number of results per page (max 100, default: 30) (number, optional)
-  - `project_number`: The project's number. (number, required)
-
-- **list_project_items** - List project items
-  - `owner`: If owner_type == user it is the handle for the GitHub user account. If owner_type == org it is the name of the organization. The name is not case sensitive. (string, required)
-  - `owner_type`: Owner type (string, required)
-  - `per_page`: Number of results per page (max 100, default: 30) (number, optional)
-  - `project_number`: The project's number. (number, required)
-  - `query`: Search query to filter items (string, optional)
-
-- **list_projects** - List projects
-  - `owner`: If owner_type == user it is the handle for the GitHub user account. If owner_type == org it is the name of the organization. The name is not case sensitive. (string, required)
-  - `owner_type`: Owner type (string, required)
-  - `per_page`: Number of results per page (max 100, default: 30) (number, optional)
-  - `query`: Filter projects by a search query (matches title and description) (string, optional)
-
-- **update_project_item** - Update project item
-  - `item_id`: The unique identifier of the project item. This is not the issue or pull request ID. (number, required)
-  - `owner`: If owner_type == user it is the handle for the GitHub user account. If owner_type == org it is the name of the organization. The name is not case sensitive. (string, required)
-  - `owner_type`: Owner type (string, required)
-  - `project_number`: The project's number. (number, required)
-  - `updated_field`: Object consisting of the ID of the project field to update and the new value for the field. To clear the field, set "value" to null. Example: {"id": 123456, "value": "New Value"} (object, required)
+- **projects_write** - Manage GitHub Projects
+  - **OAuth Challenge Scopes**: `project`
+  - `body`: The body of the status update (markdown). Used for 'create_project_status_update' method. (string, optional)
+  - `field_name`: The name of the iteration field (e.g. 'Sprint'). Required for 'create_iteration_field' method. (string, optional)
+  - `filter`: Saved view filter; omit on update to preserve it, or pass null to clear it. (string | null, optional)
+  - `issue_number`: The issue number. Required for 'add_project_item' when item_type is 'issue'. Also accepted by 'update_project_item' to resolve the item by issue number (combine with item_owner and item_repo). (number, optional)
+  - `item_id`: The project item ID. Required for 'delete_project_item'. For 'update_project_item', provide either item_id, or (item_owner + item_repo + issue_number) to resolve the item by issue. (number, optional)
+  - `item_owner`: The owner (user or organization) of the repository containing the issue or pull request. Required for 'add_project_item' method. Also accepted by 'update_project_item' when resolving the item by issue number. (string, optional)
+  - `item_repo`: The name of the repository containing the issue or pull request. Required for 'add_project_item' method. Also accepted by 'update_project_item' when resolving the item by issue number. (string, optional)
+  - `item_type`: The item's type, either issue or pull_request. Required for 'add_project_item' method. (string, optional)
+  - `items`: The items to update with the top-level 'updated_field'. Required for 'update_project_items'; prefer it over calling 'update_project_item' in a loop. Each entry must match exactly one reference variant: 'node_id', numeric 'item_id', or 'item_owner' + 'item_repo' + 'issue_number'. Limit: 50 items per call. (object[], optional)
+  - `iteration_duration`: Duration in days for iterations of the field (e.g. 7 for weekly, 14 for bi-weekly). Required for 'create_iteration_field' method. (number, optional)
+  - `iterations`: Custom iterations for 'create_iteration_field' method. Only set this when you need iterations with varying durations, breaks between them, or specific titles. Otherwise omit it: GitHub auto-creates three iterations of 'iteration_duration' days starting on 'start_date', which is the right choice for most cases. (object[], optional)
+  - `layout`: View layout; required when creating a view. (string, optional)
+  - `method`: The method to execute (string, required)
+  - `name`: View name; required when creating a view. (string, optional)
+  - `owner`: The project owner (user or organization login). The name is not case sensitive. (string, required)
+  - `owner_type`: Owner type (user or org). Required for 'create_project' method. If not provided for other methods, will be automatically detected. (string, optional)
+  - `project_number`: The project's number. Required for all methods except 'create_project'. (number, optional)
+  - `pull_request_number`: The pull request number (use when item_type is 'pull_request' for 'add_project_item' method). Provide either issue_number or pull_request_number. (number, optional)
+  - `start_date`: Start date in YYYY-MM-DD format. Used for 'create_project_status_update' and 'create_iteration_field' methods. (string, optional)
+  - `status`: The status of the project. Used for 'create_project_status_update' method. (string, optional)
+  - `target_date`: The target date of the status update in YYYY-MM-DD format. Used for 'create_project_status_update' method. (string, optional)
+  - `title`: The project title. Required for 'create_project' method. (string, optional)
+  - `updated_field`: The field/value to apply, using {"id": 123, "value": ...} or {"name": "Status", "value": ...}; null clears the field. Required for 'update_project_item' and 'update_project_items', where one top-level field/value applies to every item in a batch. For 'update_project_item' SINGLE_SELECT fields, the name form accepts option names; the ID form expects an option ID. (object, optional)
+  - `view_id`: Project view node ID for update or delete; must belong to owner/project_number. (string, optional)
+  - `visible_field_names`: Ordered project field names to show on create or replace on update; omit on update to preserve, or pass [] to reset. Mutually exclusive with visible_fields. Roadmap accepts only []. (string[], optional)
+  - `visible_fields`: Ordered project field database IDs to show on create or replace on update; omit on update to preserve, or pass [] to reset. Mutually exclusive with visible_field_names. Roadmap accepts only []. (string[], optional)
 
 </details>
 
 <details>
 
-<summary>Pull Requests</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/git-pull-request-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/git-pull-request-light.png"><img src="pkg/octicons/icons/git-pull-request-light.png" width="20" height="20" alt="git-pull-request"></picture> Pull Requests</summary>
 
 - **add_comment_to_pending_review** - Add review comment to the requester's latest pending pull request review
+  - **OAuth Challenge Scopes**: `repo`
   - `body`: The text of the review comment (string, required)
   - `line`: The line of the blob in the pull request diff that the comment applies to. For multi-line comments, the last line of the range (number, optional)
   - `owner`: Repository owner (string, required)
@@ -891,7 +1241,18 @@ The following sets of tools are available:
   - `startSide`: For multi-line comments, the starting side of the diff that the comment applies to. LEFT indicates the previous state, RIGHT indicates the new state (string, optional)
   - `subjectType`: The level at which the comment is targeted (string, required)
 
+- **add_reply_to_pull_request_comment** - Add reply to pull request comment
+  - **OAuth Challenge Scopes**: `repo`
+  - `body`: The text of the reply. Required unless reaction is provided. (string, optional)
+  - `commentId`: The numeric ID of the pull request review comment to reply or react to. Use the number from a #discussion_r... anchor, not the GraphQL thread node ID (PRRT_...). (number, required)
+  - `owner`: Repository owner (string, required)
+  - `pullNumber`: Pull request number. Required when body is provided. (number, optional)
+  - `reaction`: Emoji reaction to add. Required unless body is provided. (string, optional)
+  - `repo`: Repository name (string, required)
+
 - **create_pull_request** - Open new pull request
+  - **OAuth Challenge Scopes**: `repo`
+  - **MCP App UI**: `ui://github-mcp-server/pr-write`
   - `base`: Branch to merge into (string, required)
   - `body`: PR description (string, optional)
   - `draft`: Create as draft PR (boolean, optional)
@@ -899,11 +1260,14 @@ The following sets of tools are available:
   - `maintainer_can_modify`: Allow maintainer edits (boolean, optional)
   - `owner`: Repository owner (string, required)
   - `repo`: Repository name (string, required)
+  - `reviewers`: GitHub usernames or ORG/team-slug team reviewers to request reviews from (string[], optional)
   - `title`: PR title (string, required)
 
 - **list_pull_requests** - List pull requests
+  - **OAuth Challenge Scopes**: `repo`
   - `base`: Filter by base branch (string, optional)
   - `direction`: Sort direction (string, optional)
+  - `fields`: Subset of fields to return for each pull request. If omitted, all fields are returned. Use this to reduce response size when you only need specific fields; omitting 'body' in particular drops the largest per-result data. (string[], optional)
   - `head`: Filter by head user/org and branch (string, optional)
   - `owner`: Repository owner (string, required)
   - `page`: Page number for pagination (min 1) (number, optional)
@@ -913,30 +1277,38 @@ The following sets of tools are available:
   - `state`: Filter by state (string, optional)
 
 - **merge_pull_request** - Merge pull request
+  - **OAuth Challenge Scopes**: `repo`
   - `commit_message`: Extra detail for merge commit (string, optional)
   - `commit_title`: Title for merge commit (string, optional)
+  - `expectedHeadSha`: The expected SHA of the pull request's HEAD ref (string, optional)
   - `merge_method`: Merge method (string, optional)
   - `owner`: Repository owner (string, required)
   - `pullNumber`: Pull request number (number, required)
   - `repo`: Repository name (string, required)
 
 - **pull_request_read** - Get details for a single pull request
+  - **OAuth Challenge Scopes**: `repo`
+  - `after`: Cursor for pagination, used only by the get_review_comments method. Pass the endCursor from the previous page's PageInfo to fetch the next page. (string, optional)
   - `method`: Action to specify what pull request data needs to be retrieved from GitHub. 
-Possible options: 
- 1. get - Get details of a specific pull request.
- 2. get_diff - Get the diff of a pull request.
- 3. get_status - Get status of a head commit in a pull request. This reflects status of builds and checks.
- 4. get_files - Get the list of files changed in a pull request. Use with pagination parameters to control the number of results returned.
- 5. get_review_comments - Get the review comments on a pull request. Use with pagination parameters to control the number of results returned.
- 6. get_reviews - Get the reviews on a pull request. When asked for review comments, use get_review_comments method.
- (string, required)
+    Possible options: 
+     1. get - Get details of a specific pull request.
+     2. get_diff - Get the diff of a pull request.
+     3. get_status - Get combined commit status of a head commit in a pull request.
+     4. get_files - Get the list of files changed in a pull request. Use with pagination parameters to control the number of results returned.
+     5. get_commits - Get the list of commits on a pull request. Use with pagination parameters to control the number of results returned.
+     6. get_review_comments - Get review threads on a pull request. Each thread contains logically grouped review comments made on the same code location during pull request reviews. Returns thread metadata and comments with nullable current and original line-range coordinates (line, start_line, original_line, original_start_line). Current coordinates are omitted when unavailable, such as for outdated comments. Use cursor-based pagination (perPage, after) to control results.
+     7. get_reviews - Get the reviews on a pull request. When asked for review comments, use get_review_comments method. Use with pagination parameters to control the number of results returned.
+     8. get_comments - Get comments on a pull request. Use this if user doesn't specifically want review comments. Use with pagination parameters to control the number of results returned.
+     9. get_check_runs - Get check runs for the head commit of a pull request. Check runs are the individual CI/CD jobs and checks that run on the PR.
+     (string, required)
   - `owner`: Repository owner (string, required)
   - `page`: Page number for pagination (min 1) (number, optional)
   - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
   - `pullNumber`: Pull request number (number, required)
   - `repo`: Repository name (string, required)
 
-- **pull_request_review_write** - Write operations (create, submit, delete) on pull request reviews.
+- **pull_request_review_write** - Write operations (create, submit, delete) on pull request reviews
+  - **OAuth Challenge Scopes**: `repo`
   - `body`: Review comment text (string, optional)
   - `commitID`: SHA of commit to review (string, optional)
   - `event`: Review action to perform. (string, optional)
@@ -944,13 +1316,11 @@ Possible options:
   - `owner`: Repository owner (string, required)
   - `pullNumber`: Pull request number (number, required)
   - `repo`: Repository name (string, required)
-
-- **request_copilot_review** - Request Copilot review
-  - `owner`: Repository owner (string, required)
-  - `pullNumber`: Pull request number (number, required)
-  - `repo`: Repository name (string, required)
+  - `threadId`: The node ID of the review thread (e.g., PRRT_kwDOxxx). Required for resolve_thread and unresolve_thread methods. Get thread IDs from pull_request_read with method get_review_comments. (string, optional)
 
 - **search_pull_requests** - Search pull requests
+  - **OAuth Challenge Scopes**: `repo`
+  - `fields`: Subset of fields to return for each pull request result. If omitted, all fields are returned. Use this to reduce response size when you only need specific fields; omitting 'body', 'reactions', and 'labels' in particular drops the largest per-result data. (string[], optional)
   - `order`: Sort order (string, optional)
   - `owner`: Optional repository owner. If provided with repo, only pull requests for this repository are listed. (string, optional)
   - `page`: Page number for pagination (min 1) (number, optional)
@@ -960,6 +1330,8 @@ Possible options:
   - `sort`: Sort field by number of matches of categories, defaults to best match (string, optional)
 
 - **update_pull_request** - Edit pull request
+  - **OAuth Challenge Scopes**: `repo`
+  - **MCP App UI**: `ui://github-mcp-server/pr-edit`
   - `base`: New base branch name (string, optional)
   - `body`: New description (string, optional)
   - `draft`: Mark pull request as draft (true) or ready for review (false) (boolean, optional)
@@ -967,11 +1339,12 @@ Possible options:
   - `owner`: Repository owner (string, required)
   - `pullNumber`: Pull request number to update (number, required)
   - `repo`: Repository name (string, required)
-  - `reviewers`: GitHub usernames to request reviews from (string[], optional)
+  - `reviewers`: GitHub usernames or ORG/team-slug team reviewers to request reviews from (string[], optional)
   - `state`: New state (string, optional)
   - `title`: New title (string, optional)
 
 - **update_pull_request_branch** - Update pull request branch
+  - **OAuth Challenge Scopes**: `repo`
   - `expectedHeadSha`: The expected SHA of the pull request's HEAD ref (string, optional)
   - `owner`: Repository owner (string, required)
   - `pullNumber`: Pull request number (number, required)
@@ -981,44 +1354,56 @@ Possible options:
 
 <details>
 
-<summary>Repositories</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/repo-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/repo-light.png"><img src="pkg/octicons/icons/repo-light.png" width="20" height="20" alt="repo"></picture> Repositories</summary>
 
 - **create_branch** - Create branch
+  - **OAuth Challenge Scopes**: `repo`
   - `branch`: Name for new branch (string, required)
   - `from_branch`: Source branch (defaults to repo default) (string, optional)
   - `owner`: Repository owner (string, required)
   - `repo`: Repository name (string, required)
 
 - **create_or_update_file** - Create or update file
+  - **OAuth Challenge Scopes**: `repo`, `workflow`
+  - `allow_symlink_write`: Set true to update a symbolic link itself; content must be its new target path. (boolean, optional)
   - `branch`: Branch to create/update the file in (string, required)
-  - `content`: Content of the file (string, required)
+  - `content`: Content of the file, exactly as it should appear once written. Do not base64-encode it; this server does that before calling the REST API. (string, required)
   - `message`: Commit message (string, required)
   - `owner`: Repository owner (username or organization) (string, required)
   - `path`: Path where to create/update the file (string, required)
   - `repo`: Repository name (string, required)
-  - `sha`: Required if updating an existing file. The blob SHA of the file being replaced. (string, optional)
+  - `sha`: The blob SHA of the file being replaced. Required if the file already exists. Retrieve it with get_file_contents using the same owner, repo, and path, with ref set to this tool's branch value. (string, optional)
 
 - **create_repository** - Create repository
+  - **OAuth Challenge Scopes**: `repo`
   - `autoInit`: Initialize with README (boolean, optional)
   - `description`: Repository description (string, optional)
   - `name`: Repository name (string, required)
   - `organization`: Organization to create the repository in (omit to create in your personal account) (string, optional)
-  - `private`: Whether repo should be private (boolean, optional)
+  - `private`: Whether the repository should be private. Defaults to true (private) when omitted. (boolean, optional)
 
 - **delete_file** - Delete file
+  - **OAuth Challenge Scopes**: `repo`, `workflow`
   - `branch`: Branch to delete the file from (string, required)
   - `message`: Commit message (string, required)
   - `owner`: Repository owner (username or organization) (string, required)
   - `path`: Path to the file to delete (string, required)
   - `repo`: Repository name (string, required)
 
+- **delete_repository** - Delete repository
+  - **OAuth Challenge Scopes**: `delete_repo`, `repo`
+  - `owner`: Repository owner (username or organization) (string, required)
+  - `repo`: Repository name (string, required)
+
 - **fork_repository** - Fork repository
+  - **OAuth Challenge Scopes**: `repo`
   - `organization`: Organization to fork to (string, optional)
   - `owner`: Repository owner (string, required)
   - `repo`: Repository name (string, required)
 
 - **get_commit** - Get commit details
-  - `include_diff`: Whether to include file diffs and stats in the response. Default is true. (boolean, optional)
+  - **OAuth Challenge Scopes**: `repo`
+  - `detail`: Level of detail to include for changed files. "none" omits stats and files entirely. "stats" (default) includes per-file metadata: filename, status, and lines-of-code counts (additions, deletions, changes), with no patch content. "full_patch" additionally includes the unified diff content for each file and can be very large. (string, optional)
   - `owner`: Repository owner (string, required)
   - `page`: Page number for pagination (min 1) (number, optional)
   - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
@@ -1026,53 +1411,76 @@ Possible options:
   - `sha`: Commit SHA, branch name, or tag name (string, required)
 
 - **get_file_contents** - Get file or directory contents
+  - **OAuth Challenge Scopes**: `repo`
+  - `fields`: Subset of fields to return for each entry when the path is a directory. If omitted, all fields are returned. Ignored when the path is a single file. Use this to reduce response size when listing directories and you only need specific fields, e.g. just 'name' and 'type'. (string[], optional)
   - `owner`: Repository owner (username or organization) (string, required)
-  - `path`: Path to file/directory (directories must end with a slash '/') (string, optional)
+  - `path`: Path to file/directory (string, optional)
   - `ref`: Accepts optional git refs such as `refs/tags/{tag}`, `refs/heads/{branch}` or `refs/pull/{pr_number}/head` (string, optional)
   - `repo`: Repository name (string, required)
   - `sha`: Accepts optional commit SHA. If specified, it will be used instead of ref (string, optional)
 
 - **get_latest_release** - Get latest release
+  - **OAuth Challenge Scopes**: `repo`
   - `owner`: Repository owner (string, required)
   - `repo`: Repository name (string, required)
 
 - **get_release_by_tag** - Get a release by tag name
+  - **OAuth Challenge Scopes**: `repo`
   - `owner`: Repository owner (string, required)
   - `repo`: Repository name (string, required)
   - `tag`: Tag name (e.g., 'v1.0.0') (string, required)
 
 - **get_tag** - Get tag details
+  - **OAuth Challenge Scopes**: `repo`
   - `owner`: Repository owner (string, required)
   - `repo`: Repository name (string, required)
   - `tag`: Tag name (string, required)
 
 - **list_branches** - List branches
+  - **OAuth Challenge Scopes**: `repo`
   - `owner`: Repository owner (string, required)
   - `page`: Page number for pagination (min 1) (number, optional)
   - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
   - `repo`: Repository name (string, required)
 
 - **list_commits** - List commits
+  - **OAuth Challenge Scopes**: `repo`
   - `author`: Author username or email address to filter commits by (string, optional)
+  - `fields`: Subset of fields to return for each commit. If omitted, all fields are returned. Use this to reduce response size when you only need specific fields, e.g. just 'sha' and 'html_url'. (string[], optional)
   - `owner`: Repository owner (string, required)
   - `page`: Page number for pagination (min 1) (number, optional)
+  - `path`: Only commits containing this file path will be returned (string, optional)
   - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
   - `repo`: Repository name (string, required)
   - `sha`: Commit SHA, branch or tag name to list commits of. If not provided, uses the default branch of the repository. If a commit SHA is provided, will list commits up to that SHA. (string, optional)
+  - `since`: Only commits after this date will be returned (ISO 8601 format: YYYY-MM-DDTHH:MM:SSZ or YYYY-MM-DD) (string, optional)
+  - `until`: Only commits before this date will be returned (ISO 8601 format: YYYY-MM-DDTHH:MM:SSZ or YYYY-MM-DD) (string, optional)
 
 - **list_releases** - List releases
+  - **OAuth Challenge Scopes**: `repo`
+  - `fields`: Subset of fields to return for each release. If omitted, all fields are returned. Use this to reduce response size when you only need specific fields; omitting 'body' in particular drops the largest per-release data. (string[], optional)
   - `owner`: Repository owner (string, required)
   - `page`: Page number for pagination (min 1) (number, optional)
   - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
   - `repo`: Repository name (string, required)
 
+- **list_repository_collaborators** - List repository collaborators
+  - **OAuth Challenge Scopes**: `repo`
+  - `affiliation`: Filter by affiliation. Can be one of: 'outside' (outside collaborators), 'direct' (all with permissions regardless of org membership), 'all' (all collaborators). Default: 'all' (string, optional)
+  - `owner`: Repository owner (string, required)
+  - `page`: Page number for pagination (default 1, min 1) (number, optional)
+  - `perPage`: Results per page for pagination (default 30, min 1, max 100) (number, optional)
+  - `repo`: Repository name (string, required)
+
 - **list_tags** - List tags
+  - **OAuth Challenge Scopes**: `repo`
   - `owner`: Repository owner (string, required)
   - `page`: Page number for pagination (min 1) (number, optional)
   - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
   - `repo`: Repository name (string, required)
 
 - **push_files** - Push files to repository
+  - **OAuth Challenge Scopes**: `repo`, `workflow`
   - `branch`: Branch to push to (string, required)
   - `files`: Array of file objects to push, each object with path (string) and content (string) (object[], required)
   - `message`: Commit message (string, required)
@@ -1080,13 +1488,24 @@ Possible options:
   - `repo`: Repository name (string, required)
 
 - **search_code** - Search code
+  - **OAuth Challenge Scopes**: `repo`
+  - `fields`: Subset of fields to return for each code search result. If omitted, all fields are returned. Use this to reduce response size when you only need specific fields; omitting 'repository' and 'text_matches' in particular drops the largest per-result data. (string[], optional)
   - `order`: Sort order for results (string, optional)
   - `page`: Page number for pagination (min 1) (number, optional)
   - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
-  - `query`: Search query using GitHub's powerful code search syntax. Examples: 'content:Skill language:Java org:github', 'NOT is:archived language:Python OR language:go', 'repo:github/github-mcp-server'. Supports exact matching, language filters, path filters, and more. (string, required)
+  - `query`: Search query (GitHub code search REST). Implicit AND between terms; supports `OR`, `NOT`, and `"quoted phrase"` for exact match. Qualifiers: `repo:owner/repo`, `org:`, `user:`, `language:`, `path:dir` (prefix match), `filename:exact.ext`, `extension:`, `in:file`, `in:path`, `size:`, `is:archived`, `is:fork`. Max 256 chars. Examples: `WithContext language:go org:github`; `"package main" repo:o/r`; `func extension:go path:cmd repo:o/r`; `NOT TODO language:go repo:o/r`. (string, required)
   - `sort`: Sort field ('indexed' only) (string, optional)
 
+- **search_commits** - Search commits
+  - **OAuth Challenge Scopes**: `repo`
+  - `order`: Sort order (string, optional)
+  - `page`: Page number for pagination (min 1) (number, optional)
+  - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
+  - `query`: Commit search query (GitHub commit search REST). Searches commit messages on the default branch only. Scope the search with `repo:owner/repo`, `org:`, or `user:` (queries without a scope qualifier match across all of GitHub and are usually not what you want). Other qualifiers: `author:`, `committer:`, `author-name:`, `committer-name:`, `author-email:`, `committer-email:`, `author-date:`, `committer-date:` (supports `>`, `<`, `>=`, `<=`, and `YYYY-MM-DD..YYYY-MM-DD` ranges), `merge:true|false`, `hash:`, `tree:`, `parent:`, `is:public`. Examples: `repo:owner/repo fix panic`; `org:github author:defunkt committer-date:>=2024-01-01`; `"refactor cache" repo:o/r`; `hash:abc1234 repo:o/r`. (string, required)
+  - `sort`: Sort by author or committer date (defaults to best match) (string, optional)
+
 - **search_repositories** - Search repositories
+  - **OAuth Challenge Scopes**: `repo`
   - `minimal_output`: Return minimal repository information (default: true). When false, returns full GitHub API repository objects. (boolean, optional)
   - `order`: Sort order (string, optional)
   - `page`: Page number for pagination (min 1) (number, optional)
@@ -1098,15 +1517,19 @@ Possible options:
 
 <details>
 
-<summary>Secret Protection</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/shield-lock-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/shield-lock-light.png"><img src="pkg/octicons/icons/shield-lock-light.png" width="20" height="20" alt="shield-lock"></picture> Secret Protection</summary>
 
 - **get_secret_scanning_alert** - Get secret scanning alert
+  - **OAuth Challenge Scopes**: `security_events`
   - `alertNumber`: The number of the alert. (number, required)
   - `owner`: The owner of the repository. (string, required)
   - `repo`: The name of the repository. (string, required)
 
 - **list_secret_scanning_alerts** - List secret scanning alerts
+  - **OAuth Challenge Scopes**: `security_events`
   - `owner`: The owner of the repository. (string, required)
+  - `page`: Page number for pagination (min 1) (number, optional)
+  - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
   - `repo`: The name of the repository. (string, required)
   - `resolution`: Filter by resolution (string, optional)
   - `secret_type`: A comma-separated list of secret types to return. All default secret patterns are returned. To return generic patterns, pass the token name(s) in the parameter. (string, optional)
@@ -1116,12 +1539,14 @@ Possible options:
 
 <details>
 
-<summary>Security Advisories</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/shield-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/shield-light.png"><img src="pkg/octicons/icons/shield-light.png" width="20" height="20" alt="shield"></picture> Security Advisories</summary>
 
 - **get_global_security_advisory** - Get a global security advisory
+  - **OAuth Challenge Scopes**: `security_events`
   - `ghsaId`: GitHub Security Advisory ID (format: GHSA-xxxx-xxxx-xxxx). (string, required)
 
 - **list_global_security_advisories** - List global security advisories
+  - **OAuth Challenge Scopes**: `security_events`
   - `affects`: Filter advisories by affected package or version (e.g. "package1,package2@1.0.0"). (string, optional)
   - `cveId`: Filter by CVE ID. (string, optional)
   - `cwes`: Filter by Common Weakness Enumeration IDs (e.g. ["79", "284", "22"]). (string[], optional)
@@ -1135,12 +1560,14 @@ Possible options:
   - `updated`: Filter by update date or date range (ISO 8601 date or range). (string, optional)
 
 - **list_org_repository_security_advisories** - List org repository security advisories
+  - **OAuth Challenge Scopes**: `security_events`
   - `direction`: Sort direction. (string, optional)
   - `org`: The organization login. (string, required)
   - `sort`: Sort field. (string, optional)
   - `state`: Filter by advisory state. (string, optional)
 
 - **list_repository_security_advisories** - List repository security advisories
+  - **OAuth Challenge Scopes**: `security_events`
   - `direction`: Sort direction. (string, optional)
   - `owner`: The owner of the repository. (string, required)
   - `repo`: The name of the repository. (string, required)
@@ -1151,9 +1578,10 @@ Possible options:
 
 <details>
 
-<summary>Stargazers</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/star-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/star-light.png"><img src="pkg/octicons/icons/star-light.png" width="20" height="20" alt="star"></picture> Stargazers</summary>
 
 - **list_starred_repositories** - List starred repositories
+  - **OAuth Challenge Scopes**: `repo`
   - `direction`: The direction to sort the results by. (string, optional)
   - `page`: Page number for pagination (min 1) (number, optional)
   - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
@@ -1161,10 +1589,12 @@ Possible options:
   - `username`: Username to list starred repositories for. Defaults to the authenticated user. (string, optional)
 
 - **star_repository** - Star repository
+  - **OAuth Challenge Scopes**: `repo`
   - `owner`: Repository owner (string, required)
   - `repo`: Repository name (string, required)
 
 - **unstar_repository** - Unstar repository
+  - **OAuth Challenge Scopes**: `repo`
   - `owner`: Repository owner (string, required)
   - `repo`: Repository name (string, required)
 
@@ -1172,9 +1602,10 @@ Possible options:
 
 <details>
 
-<summary>Users</summary>
+<summary><picture><source media="(prefers-color-scheme: dark)" srcset="pkg/octicons/icons/people-dark.png"><source media="(prefers-color-scheme: light)" srcset="pkg/octicons/icons/people-light.png"><img src="pkg/octicons/icons/people-light.png" width="20" height="20" alt="people"></picture> Users</summary>
 
 - **search_users** - Search users
+  - **OAuth Challenge Scopes**: `repo`
   - `order`: Sort order (string, optional)
   - `page`: Page number for pagination (min 1) (number, optional)
   - `perPage`: Results per page for pagination (min 1, max 100) (number, optional)
@@ -1184,18 +1615,18 @@ Possible options:
 </details>
 <!-- END AUTOMATED TOOLS -->
 
-### Additional Tools in Remote Github MCP Server
+### Additional Tools in Remote GitHub MCP Server
 
 <details>
 
 <summary>Copilot</summary>
 
--   **create_pull_request_with_copilot** - Perform task with GitHub Copilot coding agent
-    -   `owner`: Repository owner. You can guess the owner, but confirm it with the user before proceeding. (string, required)
-    -   `repo`: Repository name. You can guess the repository name, but confirm it with the user before proceeding. (string, required)
-    -   `problem_statement`: Detailed description of the task to be performed (e.g., 'Implement a feature that does X', 'Fix bug Y', etc.) (string, required)
-    -   `title`: Title for the pull request that will be created (string, required)
-    -   `base_ref`: Git reference (e.g., branch) that the agent will start its work from. If not specified, defaults to the repository's default branch (string, optional)
+- **create_pull_request_with_copilot** - Perform task with GitHub Copilot coding agent
+  - `owner`: Repository owner. You can guess the owner, but confirm it with the user before proceeding. (string, required)
+  - `repo`: Repository name. You can guess the repository name, but confirm it with the user before proceeding. (string, required)
+  - `problem_statement`: Detailed description of the task to be performed (e.g., 'Implement a feature that does X', 'Fix bug Y', etc.) (string, required)
+  - `title`: Title for the pull request that will be created (string, required)
+  - `base_ref`: Git reference (e.g., branch) that the agent will start its work from. If not specified, defaults to the repository's default branch (string, optional)
 
 </details>
 
@@ -1203,43 +1634,27 @@ Possible options:
 
 <summary>Copilot Spaces</summary>
 
--   **get_copilot_space** - Get Copilot Space
-    -   `owner`: The owner of the space. (string, required)
-    -   `name`: The name of the space. (string, required)
+- **Authentication note**
+  - Fine-grained PATs are not hidden by classic PAT scope filtering, so these tools may still appear even when the token cannot use them.
+  - For org-owned spaces, fine-grained PATs must be installed on the owning organization and include `organization_copilot_spaces: read`.
+  - If an org-owned space contains repository-backed resources, the token must also have access to every referenced repository or the space may be treated as not found.
 
--   **list_copilot_spaces** - List Copilot Spaces
+- **get_copilot_space** - Get Copilot Space
+  - `owner`: The owner of the space. (string, required)
+  - `name`: The name of the space. (string, required)
+
+- **list_copilot_spaces** - List Copilot Spaces
+
 </details>
 
 <details>
 
 <summary>GitHub Support Docs Search</summary>
 
--   **github_support_docs_search** - Retrieve documentation relevant to answer GitHub product and support questions. Support topics include: GitHub Actions Workflows, Authentication, GitHub Support Inquiries, Pull Request Practices, Repository Maintenance, GitHub Pages, GitHub Packages, GitHub Discussions, Copilot Spaces
-    -   `query`: Input from the user about the question they need answered. This is the latest raw unedited user message. You should ALWAYS leave the user message as it is, you should never modify it. (string, required)
+- **github_support_docs_search** - Retrieve documentation relevant to answer GitHub product and support questions. Support topics include: GitHub Actions Workflows, Authentication, GitHub Support Inquiries, Pull Request Practices, Repository Maintenance, GitHub Pages, GitHub Packages, GitHub Discussions, Copilot Spaces
+  - `query`: Input from the user about the question they need answered. This is the latest raw unedited user message. You should ALWAYS leave the user message as it is, you should never modify it. (string, required)
+
 </details>
-
-## Dynamic Tool Discovery
-
-**Note**: This feature is currently in beta and may not be available in all environments. Please test it out and let us know if you encounter any issues.
-
-Instead of starting with all tools enabled, you can turn on dynamic toolset discovery. Dynamic toolsets allow the MCP host to list and enable toolsets in response to a user prompt. This should help to avoid situations where the model gets confused by the sheer number of tools available.
-
-### Using Dynamic Tool Discovery
-
-When using the binary, you can pass the `--dynamic-toolsets` flag.
-
-```bash
-./github-mcp-server --dynamic-toolsets
-```
-
-When using Docker, you can pass the toolsets as environment variables:
-
-```bash
-docker run -i --rm \
-  -e GITHUB_PERSONAL_ACCESS_TOKEN=<your-token> \
-  -e GITHUB_DYNAMIC_TOOLSETS=1 \
-  ghcr.io/github/github-mcp-server
-```
 
 ## Read-Only Mode
 
@@ -1257,6 +1672,47 @@ docker run -i --rm \
   -e GITHUB_READ_ONLY=1 \
   ghcr.io/github/github-mcp-server
 ```
+
+## Lockdown Mode
+
+Lockdown mode limits the content that the server will surface from public repositories. When enabled, the server checks whether the author of each item has push access to the repository. Private repositories are unaffected, and collaborators keep full access to their own content.
+
+Lockdown mode is a best-effort content filter intended to reduce the risk of prompt injection from untrusted repository content (issues, pull requests, comments, commits, etc.). It is **not** an authorization boundary: it does not change what the underlying GitHub credential can read or write, and content withheld from a filtered tool response may still be reachable through other tools or direct GitHub API access with the same credential.
+
+As an intentional exception, content authored by a small set of trusted bot accounts (currently `github-actions[bot]` and `copilot`) is always treated as safe, regardless of push access. This avoids filtering routine automation output (e.g. CI-generated commits or comments) that would otherwise be withheld under lockdown mode.
+
+```bash
+./github-mcp-server --lockdown-mode
+```
+
+When running with Docker, set the corresponding environment variable:
+
+```bash
+docker run -i --rm \
+  -e GITHUB_PERSONAL_ACCESS_TOKEN=<your-token> \
+  -e GITHUB_LOCKDOWN_MODE=1 \
+  ghcr.io/github/github-mcp-server
+```
+
+In HTTP mode, this flag (or `GITHUB_LOCKDOWN_MODE`) is an upper bound: the `X-MCP-Lockdown` request header can enable lockdown mode when the operator has not, but it cannot disable lockdown mode the operator has already enabled. See the [Server Configuration Guide](docs/server-configuration.md#lockdown-mode) for details.
+
+The behavior of lockdown mode depends on the tool invoked.
+
+Following tools will return an error when the author lacks the push access:
+
+- `issue_read:get`
+- `pull_request_read:get`
+- `pull_request_read:get_diff`
+- `pull_request_read:get_files`
+- `pull_request_read:get_commits`
+
+Following tools will filter out content from users lacking the push access:
+
+- `issue_read:get_comments`
+- `issue_read:get_sub_issues`
+- `pull_request_read:get_comments`
+- `pull_request_read:get_review_comments`
+- `pull_request_read:get_reviews`
 
 ## i18n / Overriding Descriptions
 
@@ -1296,9 +1752,49 @@ set the following environment variable:
 export GITHUB_MCP_TOOL_ADD_ISSUE_COMMENT_DESCRIPTION="an alternative description"
 ```
 
+### Overriding Server Name and Title
+
+The same override mechanism can be used to customize the MCP server's `name` and
+`title` fields in the initialization response. This is useful when running
+multiple GitHub MCP Server instances (e.g., one for github.com and one for
+GitHub Enterprise Server) so that agents can distinguish between them.
+
+| Key | Environment Variable | Default |
+|-----|---------------------|---------|
+| `SERVER_NAME` | `GITHUB_MCP_SERVER_NAME` | `github-mcp-server` |
+| `SERVER_TITLE` | `GITHUB_MCP_SERVER_TITLE` | `GitHub MCP Server` |
+
+For example, to configure a server instance for GitHub Enterprise Server:
+
+```json
+{
+  "SERVER_NAME": "ghes-mcp-server",
+  "SERVER_TITLE": "GHES MCP Server"
+}
+```
+
+Or using environment variables:
+
+```sh
+export GITHUB_MCP_SERVER_NAME="ghes-mcp-server"
+export GITHUB_MCP_SERVER_TITLE="GHES MCP Server"
+```
+
 ## Library Usage
 
 The exported Go API of this module should currently be considered unstable, and subject to breaking changes. In the future, we may offer stability; please file an issue if there is a use case where this would be valuable.
+
+## Contributing
+
+Contributions are welcome. Before opening a pull request, please read the [contributing guide](CONTRIBUTING.md) for setup, testing, linting, and documentation generation instructions.
+
+## Support
+
+For help using the GitHub MCP Server, see the [support guide](SUPPORT.md). If you have found a bug or want to request a feature, please search existing issues before opening a new one.
+
+## Security
+
+Please do not report security vulnerabilities through public issues. Follow the instructions in the [security policy](SECURITY.md) to report vulnerabilities responsibly.
 
 ## License
 

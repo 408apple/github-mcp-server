@@ -1,7 +1,8 @@
 {
   "annotations": {
-    "title": "Get a release by tag name",
-    "readOnlyHint": true
+    "idempotentHint": false,
+    "readOnlyHint": true,
+    "title": "Get a release by tag name"
   },
   "description": "Get a specific release by its tag name in a GitHub repository",
   "inputSchema": {

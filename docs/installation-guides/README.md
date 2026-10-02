@@ -3,27 +3,42 @@
 This directory contains detailed installation instructions for the GitHub MCP Server across different host applications and IDEs. Choose the guide that matches your development environment.
 
 ## Installation Guides by Host Application
+- **[Copilot CLI](install-copilot-cli.md)** - Installation guide for GitHub Copilot CLI
 - **[GitHub Copilot in other IDEs](install-other-copilot-ides.md)** - Installation for JetBrains, Visual Studio, Eclipse, and Xcode with GitHub Copilot
-- **[Claude Applications](install-claude.md)** - Installation guide for Claude Web, Claude Desktop and Claude Code CLI
+- **[Antigravity](install-antigravity.md)** - Installation for Google Antigravity IDE
+- **[Claude Applications](install-claude.md)** - Installation guide for Claude Desktop and Claude Code CLI
+- **[Cline](install-cline.md)** - Installation guide for Cline
 - **[Cursor](install-cursor.md)** - Installation guide for Cursor IDE
 - **[Google Gemini CLI](install-gemini-cli.md)** - Installation guide for Google Gemini CLI
+- **[OpenAI Codex](install-codex.md)** - Installation guide for OpenAI Codex
+- **[OpenCode](install-opencode.md)** - Installation guide for the OpenCode terminal agent
+- **[Roo Code](install-roo-code.md)** - Installation guide for Roo Code
 - **[Windsurf](install-windsurf.md)** - Installation guide for Windsurf IDE
+- **[Xcode (Codex & Claude Agent)](install-xcode.md)** - Installation guide for Codex and Claude Agent within Xcode
+- **[Zed](install-zed.md)** - Installation guide for Zed editor
 
 ## Support by Host Application
 
 | Host Application | Local GitHub MCP Support | Remote GitHub MCP Support | Prerequisites | Difficulty |
 |-----------------|---------------|----------------|---------------|------------|
+| Copilot CLI | ✅ | ✅ PAT + ❌ No OAuth | Docker or Go build, GitHub PAT | Easy |
 | Copilot in VS Code | ✅ | ✅ Full (OAuth + PAT) | Local: Docker or Go build, GitHub PAT<br>Remote: VS Code 1.101+ | Easy |
 | Copilot Coding Agent | ✅ | ✅ Full (on by default; no auth needed) | Any _paid_ copilot license | Default on |
 | Copilot in Visual Studio | ✅ | ✅ Full (OAuth + PAT) | Local: Docker or Go build, GitHub PAT<br>Remote: Visual Studio 17.14+ | Easy |
 | Copilot in JetBrains | ✅ | ✅ Full (OAuth + PAT) | Local: Docker or Go build, GitHub PAT<br>Remote: JetBrains Copilot Extension v1.5.53+ | Easy |
 | Claude Code | ✅ | ✅ PAT + ❌ No OAuth| GitHub MCP Server binary or remote URL, GitHub PAT | Easy |
 | Claude Desktop | ✅ | ✅ PAT + ❌ No OAuth | Docker or Go build, GitHub PAT | Moderate |
+| Cline | ✅ | ✅ PAT + ❌ No OAuth | Docker or Go build, GitHub PAT | Easy |
 | Cursor | ✅ | ✅ PAT + ❌ No OAuth | Docker or Go build, GitHub PAT | Easy |
 | Google Gemini CLI | ✅ | ✅ PAT + ❌ No OAuth | Docker or Go build, GitHub PAT | Easy |
+| OpenCode | ✅ | ✅ PAT + ❌ No OAuth | Docker or Go build, GitHub PAT | Easy |
+| Roo Code | ✅ | ✅ PAT + ❌ No OAuth | Docker or Go build, GitHub PAT | Easy |
 | Windsurf | ✅ | ✅ PAT + ❌ No OAuth | Docker or Go build, GitHub PAT | Easy |
+| Zed | ✅ | ✅ PAT + ❌ No OAuth | Docker or Go build, GitHub PAT | Easy |
 | Copilot in Xcode | ✅ | ✅ Full (OAuth + PAT) | Local: Docker or Go build, GitHub PAT<br>Remote: Copilot for Xcode 0.41.0+ | Easy |
 | Copilot in Eclipse | ✅ | ✅ Full (OAuth + PAT) | Local: Docker or Go build, GitHub PAT<br>Remote: Eclipse Plug-in for Copilot 0.10.0+ | Easy |
+| Xcode (Codex) | ✅ | ✅ PAT + ❌ No OAuth | Local: Docker (full path required), GitHub PAT<br>Remote: GitHub PAT via `GITHUB_PAT_TOKEN` env var (`bearer_token_env_var`) | Easy |
+| Xcode (Claude Agent) | ✅ | ✅ PAT + ❌ No OAuth | Local: Docker (full path required), GitHub PAT<br>Remote: GitHub PAT | Easy |
 
 **Legend:**
 - ✅ = Fully supported
@@ -51,7 +66,7 @@ The GitHub MCP Server can be installed using several methods. **Docker is the mo
 - **Pros**: Latest features, full customization, no external dependencies
 - **Cons**: Requires Go development environment, more complex setup
 - **Prerequisites**: [Go 1.24+](https://go.dev/doc/install)
-- **Build command**: `go build -o github-mcp-server cmd/github-mcp-server/main.go`
+- **Build command**: `go build -o github-mcp-server ./cmd/github-mcp-server` (build the complete package from a Git checkout to retain its source revision).
 - **Best for**: Developers who want the latest features or need custom modifications
 
 ### Important Notes on the GitHub MCP Server
@@ -93,5 +108,5 @@ If you encounter issues:
 After installation, you may want to explore:
 - **Toolsets**: Enable/disable specific GitHub API capabilities
 - **Read-Only Mode**: Restrict to read-only operations
-- **Dynamic Tool Discovery**: Enable tools on-demand
+- **Lockdown Mode**: Hide public issue details created by users without push access
 

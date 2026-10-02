@@ -1,7 +1,17 @@
 {
+  "_meta": {
+    "ui": {
+      "resourceUri": "ui://github-mcp-server/pr-write",
+      "visibility": [
+        "model",
+        "app"
+      ]
+    }
+  },
   "annotations": {
-    "title": "Open new pull request",
-    "readOnlyHint": false
+    "idempotentHint": false,
+    "readOnlyHint": false,
+    "title": "Open new pull request"
   },
   "description": "Create a new pull request in a GitHub repository.",
   "inputSchema": {
@@ -33,6 +43,13 @@
       "repo": {
         "description": "Repository name",
         "type": "string"
+      },
+      "reviewers": {
+        "description": "GitHub usernames or ORG/team-slug team reviewers to request reviews from",
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
       },
       "title": {
         "description": "PR title",

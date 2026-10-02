@@ -17,16 +17,13 @@ func TestGetLabel(t *testing.T) {
 	t.Parallel()
 
 	// Verify tool definition
-	mockClient := githubv4.NewClient(nil)
-	tool, _ := GetLabel(stubGetGQLClientFn(mockClient), translations.NullTranslationHelper)
+	serverTool := GetLabel(translations.NullTranslationHelper)
+	tool := serverTool.Tool
 	require.NoError(t, toolsnaps.Test(tool.Name, tool))
 
 	assert.Equal(t, "get_label", tool.Name)
 	assert.NotEmpty(t, tool.Description)
-	assert.Contains(t, tool.InputSchema.Properties, "owner")
-	assert.Contains(t, tool.InputSchema.Properties, "repo")
-	assert.Contains(t, tool.InputSchema.Properties, "name")
-	assert.ElementsMatch(t, tool.InputSchema.Required, []string{"owner", "repo", "name"})
+	assert.True(t, tool.Annotations.ReadOnlyHint, "get_label tool should be read-only")
 
 	tests := []struct {
 		name               string
@@ -117,10 +114,13 @@ func TestGetLabel(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			client := githubv4.NewClient(tc.mockedClient)
-			_, handler := GetLabel(stubGetGQLClientFn(client), translations.NullTranslationHelper)
+			deps := BaseDeps{
+				GQLClient: client,
+			}
+			handler := serverTool.Handler(deps)
 
 			request := createMCPRequest(tc.requestArgs)
-			result, err := handler(context.Background(), request)
+			result, err := handler(ContextWithDeps(context.Background(), deps), &request)
 
 			require.NoError(t, err)
 			assert.NotNil(t, result)
@@ -142,16 +142,13 @@ func TestListLabels(t *testing.T) {
 	t.Parallel()
 
 	// Verify tool definition
-	mockClient := githubv4.NewClient(nil)
-	tool, _ := ListLabels(stubGetGQLClientFn(mockClient), translations.NullTranslationHelper)
+	serverTool := ListLabels(translations.NullTranslationHelper)
+	tool := serverTool.Tool
 	require.NoError(t, toolsnaps.Test(tool.Name, tool))
 
 	assert.Equal(t, "list_label", tool.Name)
 	assert.NotEmpty(t, tool.Description)
-	assert.Contains(t, tool.InputSchema.Properties, "owner")
-	assert.Contains(t, tool.InputSchema.Properties, "repo")
-	assert.Contains(t, tool.InputSchema.Properties, "issue_number")
-	assert.ElementsMatch(t, tool.InputSchema.Required, []string{"owner", "repo"})
+	assert.True(t, tool.Annotations.ReadOnlyHint, "list_label tool should be read-only")
 
 	tests := []struct {
 		name               string
@@ -178,12 +175,14 @@ func TestListLabels(t *testing.T) {
 									Description githubv4.String
 								}
 								TotalCount githubv4.Int
-							} `graphql:"labels(first: 100)"`
+							} `graphql:"labels(first: 100, orderBy: {field: $orderByField, direction: $orderByDirection})"`
 						} `graphql:"repository(owner: $owner, name: $repo)"`
 					}{},
 					map[string]any{
-						"owner": githubv4.String("owner"),
-						"repo":  githubv4.String("repo"),
+						"owner":            githubv4.String("owner"),
+						"repo":             githubv4.String("repo"),
+						"orderByField":     labelOrderFieldIssueCount,
+						"orderByDirection": githubv4.OrderDirectionDesc,
 					},
 					githubv4mock.DataResponse(map[string]any{
 						"repository": map[string]any{
@@ -210,65 +209,18 @@ func TestListLabels(t *testing.T) {
 			),
 			expectToolError: false,
 		},
-		{
-			name: "successful issue labels listing",
-			requestArgs: map[string]any{
-				"owner":        "owner",
-				"repo":         "repo",
-				"issue_number": float64(123),
-			},
-			mockedClient: githubv4mock.NewMockedHTTPClient(
-				githubv4mock.NewQueryMatcher(
-					struct {
-						Repository struct {
-							Issue struct {
-								Labels struct {
-									Nodes []struct {
-										ID          githubv4.ID
-										Name        githubv4.String
-										Color       githubv4.String
-										Description githubv4.String
-									}
-									TotalCount githubv4.Int
-								} `graphql:"labels(first: 100)"`
-							} `graphql:"issue(number: $issueNumber)"`
-						} `graphql:"repository(owner: $owner, name: $repo)"`
-					}{},
-					map[string]any{
-						"owner":       githubv4.String("owner"),
-						"repo":        githubv4.String("repo"),
-						"issueNumber": githubv4.Int(123),
-					},
-					githubv4mock.DataResponse(map[string]any{
-						"repository": map[string]any{
-							"issue": map[string]any{
-								"labels": map[string]any{
-									"nodes": []any{
-										map[string]any{
-											"id":          githubv4.ID("label-1"),
-											"name":        githubv4.String("bug"),
-											"color":       githubv4.String("d73a4a"),
-											"description": githubv4.String("Something isn't working"),
-										},
-									},
-									"totalCount": githubv4.Int(1),
-								},
-							},
-						},
-					}),
-				),
-			),
-			expectToolError: false,
-		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			client := githubv4.NewClient(tc.mockedClient)
-			_, handler := ListLabels(stubGetGQLClientFn(client), translations.NullTranslationHelper)
+			deps := BaseDeps{
+				GQLClient: client,
+			}
+			handler := serverTool.Handler(deps)
 
 			request := createMCPRequest(tc.requestArgs)
-			result, err := handler(context.Background(), request)
+			result, err := handler(ContextWithDeps(context.Background(), deps), &request)
 
 			require.NoError(t, err)
 			assert.NotNil(t, result)
@@ -290,20 +242,15 @@ func TestWriteLabel(t *testing.T) {
 	t.Parallel()
 
 	// Verify tool definition
-	mockClient := githubv4.NewClient(nil)
-	tool, _ := LabelWrite(stubGetGQLClientFn(mockClient), translations.NullTranslationHelper)
+	serverTool := LabelWrite(translations.NullTranslationHelper)
+	tool := serverTool.Tool
 	require.NoError(t, toolsnaps.Test(tool.Name, tool))
 
 	assert.Equal(t, "label_write", tool.Name)
 	assert.NotEmpty(t, tool.Description)
-	assert.Contains(t, tool.InputSchema.Properties, "method")
-	assert.Contains(t, tool.InputSchema.Properties, "owner")
-	assert.Contains(t, tool.InputSchema.Properties, "repo")
-	assert.Contains(t, tool.InputSchema.Properties, "name")
-	assert.Contains(t, tool.InputSchema.Properties, "new_name")
-	assert.Contains(t, tool.InputSchema.Properties, "color")
-	assert.Contains(t, tool.InputSchema.Properties, "description")
-	assert.ElementsMatch(t, tool.InputSchema.Required, []string{"method", "owner", "repo", "name"})
+	assert.False(t, tool.Annotations.ReadOnlyHint, "label_write tool should not be read-only")
+	assert.NotNil(t, tool.Annotations.DestructiveHint)
+	assert.True(t, *tool.Annotations.DestructiveHint, "label_write delete removes labels repository-wide")
 
 	tests := []struct {
 		name               string
@@ -520,10 +467,13 @@ func TestWriteLabel(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			client := githubv4.NewClient(tc.mockedClient)
-			_, handler := LabelWrite(stubGetGQLClientFn(client), translations.NullTranslationHelper)
+			deps := BaseDeps{
+				GQLClient: client,
+			}
+			handler := serverTool.Handler(deps)
 
 			request := createMCPRequest(tc.requestArgs)
-			result, err := handler(context.Background(), request)
+			result, err := handler(ContextWithDeps(context.Background(), deps), &request)
 
 			require.NoError(t, err)
 			assert.NotNil(t, result)

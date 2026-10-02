@@ -1,7 +1,8 @@
 {
   "annotations": {
-    "title": "Create branch",
-    "readOnlyHint": false
+    "idempotentHint": false,
+    "readOnlyHint": false,
+    "title": "Create branch"
   },
   "description": "Create a new branch in a GitHub repository",
   "inputSchema": {

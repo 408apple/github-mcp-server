@@ -4,153 +4,235 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/github/github-mcp-server/internal/oauth"
+	"github.com/github/github-mcp-server/internal/requeststate"
 	"github.com/github/github-mcp-server/pkg/errors"
 	"github.com/github/github-mcp-server/pkg/github"
+	"github.com/github/github-mcp-server/pkg/http/transport"
+	"github.com/github/github-mcp-server/pkg/inventory"
+	"github.com/github/github-mcp-server/pkg/lockdown"
 	mcplog "github.com/github/github-mcp-server/pkg/log"
+	"github.com/github/github-mcp-server/pkg/observability"
+	"github.com/github/github-mcp-server/pkg/observability/metrics"
 	"github.com/github/github-mcp-server/pkg/raw"
+	"github.com/github/github-mcp-server/pkg/scopes"
 	"github.com/github/github-mcp-server/pkg/translations"
-	gogithub "github.com/google/go-github/v74/github"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/github/github-mcp-server/pkg/utils"
+	gogithub "github.com/google/go-github/v89/github"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/shurcooL/githubv4"
 )
 
-type MCPServerConfig struct {
-	// Version of the server
-	Version string
-
-	// GitHub Host to target for API requests (e.g. github.com or github.enterprise.com)
-	Host string
-
-	// GitHub Token to authenticate with the GitHub API
-	Token string
-
-	// EnabledToolsets is a list of toolsets to enable
-	// See: https://github.com/github/github-mcp-server?tab=readme-ov-file#tool-configuration
-	EnabledToolsets []string
-
-	// Whether to enable dynamic toolsets
-	// See: https://github.com/github/github-mcp-server?tab=readme-ov-file#dynamic-tool-discovery
-	DynamicToolsets bool
-
-	// ReadOnly indicates if we should only offer read-only tools
-	ReadOnly bool
-
-	// Translator provides translated text for the server tooling
-	Translator translations.TranslationHelperFunc
-
-	// Content window size
-	ContentWindowSize int
+// githubClients holds all the GitHub API clients created for a server instance.
+type githubClients struct {
+	rest       *gogithub.Client
+	gql        *githubv4.Client
+	raw        *raw.Client
+	repoAccess *lockdown.RepoAccessCache
 }
 
-const stdioServerLogPrefix = "stdioserver"
+// createGitHubClients creates all the GitHub API clients needed by the server.
+func createGitHubClients(cfg github.MCPServerConfig, apiHost utils.APIHostResolver) (*githubClients, error) {
+	restURL, err := apiHost.BaseRESTURL(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get base REST URL: %w", err)
+	}
 
-func NewMCPServer(cfg MCPServerConfig) (*server.MCPServer, error) {
-	apiHost, err := parseAPIHost(cfg.Host)
+	uploadURL, err := apiHost.UploadURL(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get upload URL: %w", err)
+	}
+
+	graphQLURL, err := apiHost.GraphqlURL(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GraphQL URL: %w", err)
+	}
+
+	rawURL, err := apiHost.RawURL(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Raw URL: %w", err)
+	}
+
+	// allowedHosts scopes the bearer token to the configured GitHub hosts, so a
+	// response that redirects off them does not carry the token to the redirect
+	// target. See transport.BearerAuthTransport.
+	allowedHosts := []string{
+		restURL.Host,
+		uploadURL.Host,
+		graphQLURL.Host,
+		rawURL.Host,
+	}
+
+	// Construct REST client. BearerAuthTransport handles both static and
+	// provider-backed tokens so every authentication mode uses the same host
+	// restrictions.
+	//
+	// ETagTransport sits below the user-agent (and auth) layers so that, by the
+	// time it runs, the Authorization header is set and can scope the
+	// conditional-request cache per token. It adds ETag/If-None-Match handling
+	// so unchanged resources are revalidated with a 304 instead of being
+	// re-downloaded in full.
+	//
+	// The conditional-request cache is enabled only for the REST API client on
+	// this long-lived local (stdio) server. The raw-content client below uses a
+	// separate transport without it, so large file bodies are never buffered
+	// into the cache. The hosted, horizontally-scaled server builds a fresh REST
+	// client per request (see pkg/github RequestDeps) and does not use this path.
+	restUATransport := &transport.UserAgentTransport{
+		Transport: &transport.ETagTransport{Transport: http.DefaultTransport},
+		Agent:     stdioUserAgent(cfg, nil),
+	}
+	restClient, err := newRESTClient(cfg, restUATransport, restURL.String(), uploadURL.String(), allowedHosts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create REST client: %w", err)
+	}
+
+	// Construct GraphQL client
+	// We use NewEnterpriseClient unconditionally since we already parsed the API host
+	gqlHTTPClient := &http.Client{
+		Transport: &transport.BearerAuthTransport{
+			Transport: &transport.GraphQLFeaturesTransport{
+				Transport: &transport.UserAgentTransport{
+					Transport: http.DefaultTransport,
+					Agent:     stdioUserAgent(cfg, nil),
+				},
+			},
+			Token:         cfg.Token,
+			TokenProvider: cfg.TokenProvider,
+			AllowedHosts:  allowedHosts,
+		},
+	}
+
+	gqlClient := githubv4.NewEnterpriseClient(graphQLURL.String(), gqlHTTPClient)
+
+	// Create raw content client. It shares the REST client's authentication but
+	// uses a transport without the conditional-request cache: raw file bodies can
+	// be large and are streamed rather than retained in memory.
+	rawUATransport := &transport.UserAgentTransport{
+		Transport: http.DefaultTransport,
+		Agent:     stdioUserAgent(cfg, nil),
+	}
+	rawRESTClient, err := newRESTClient(cfg, rawUATransport, restURL.String(), uploadURL.String(), allowedHosts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create raw REST client: %w", err)
+	}
+	rawClient, err := raw.NewClient(rawRESTClient, rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create raw client: %w", err)
+	}
+
+	// Set up repo access cache for lockdown mode
+	var repoAccessCache *lockdown.RepoAccessCache
+	if cfg.LockdownMode {
+		opts := []lockdown.RepoAccessOption{
+			lockdown.WithLogger(cfg.Logger.With("component", "lockdown")),
+		}
+		if cfg.RepoAccessTTL != nil {
+			opts = append(opts, lockdown.WithTTL(*cfg.RepoAccessTTL))
+		}
+		repoAccessCache = lockdown.NewRepoAccessCache(gqlClient, restClient, opts...)
+	}
+
+	return &githubClients{
+		rest:       restClient,
+		gql:        gqlClient,
+		raw:        rawClient,
+		repoAccess: repoAccessCache,
+	}, nil
+}
+
+// newRESTClient builds a go-github REST client that sends requests through the
+// supplied user-agent transport. Authentication uses BearerAuthTransport for
+// both static and provider-backed tokens, and allowedHosts scopes the token to
+// the configured GitHub hosts so it is never leaked to off-host redirects.
+func newRESTClient(cfg github.MCPServerConfig, uaTransport *transport.UserAgentTransport, restURL, uploadURL string, allowedHosts []string) (*gogithub.Client, error) {
+	return gogithub.NewClient(
+		gogithub.WithHTTPClient(&http.Client{Transport: &transport.BearerAuthTransport{
+			Transport:     uaTransport,
+			Token:         cfg.Token,
+			TokenProvider: cfg.TokenProvider,
+			AllowedHosts:  allowedHosts,
+		}}),
+		gogithub.WithEnterpriseURLs(restURL, uploadURL),
+	)
+}
+
+func NewStdioMCPServer(ctx context.Context, cfg github.MCPServerConfig) (*mcp.Server, error) {
+	apiHost, err := utils.NewAPIHost(cfg.Host)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse API host: %w", err)
 	}
 
-	// Construct our REST client
-	restClient := gogithub.NewClient(nil).WithAuthToken(cfg.Token)
-	restClient.UserAgent = fmt.Sprintf("github-mcp-server/%s", cfg.Version)
-	restClient.BaseURL = apiHost.baseRESTURL
-	restClient.UploadURL = apiHost.uploadURL
-
-	// Construct our GraphQL client
-	// We're using NewEnterpriseClient here unconditionally as opposed to NewClient because we already
-	// did the necessary API host parsing so that github.com will return the correct URL anyway.
-	gqlHTTPClient := &http.Client{
-		Transport: &bearerAuthTransport{
-			transport: http.DefaultTransport,
-			token:     cfg.Token,
-		},
-	} // We're going to wrap the Transport later in beforeInit
-	gqlClient := githubv4.NewEnterpriseClient(apiHost.graphqlURL.String(), gqlHTTPClient)
-
-	// When a client send an initialize request, update the user agent to include the client info.
-	beforeInit := func(_ context.Context, _ any, message *mcp.InitializeRequest) {
-		userAgent := fmt.Sprintf(
-			"github-mcp-server/%s (%s/%s)",
-			cfg.Version,
-			message.Params.ClientInfo.Name,
-			message.Params.ClientInfo.Version,
-		)
-
-		restClient.UserAgent = userAgent
-
-		gqlHTTPClient.Transport = &userAgentTransport{
-			transport: gqlHTTPClient.Transport,
-			agent:     userAgent,
-		}
-	}
-
-	hooks := &server.Hooks{
-		OnBeforeInitialize: []server.OnBeforeInitializeFunc{beforeInit},
-		OnBeforeAny: []server.BeforeAnyHookFunc{
-			func(ctx context.Context, _ any, _ mcp.MCPMethod, _ any) {
-				// Ensure the context is cleared of any previous errors
-				// as context isn't propagated through middleware
-				errors.ContextWithGitHubErrors(ctx)
-			},
-		},
-	}
-
-	enabledToolsets, invalidToolsets := cleanToolsets(cfg.EnabledToolsets, cfg.DynamicToolsets)
-
-	if len(invalidToolsets) > 0 {
-		fmt.Fprintf(os.Stderr, "Invalid toolsets ignored: %s\n", strings.Join(invalidToolsets, ", "))
-	}
-
-	// Generate instructions based on enabled toolsets
-	instructions := github.GenerateInstructions(enabledToolsets)
-
-	ghServer := github.NewServer(cfg.Version,
-		server.WithInstructions(instructions),
-		server.WithHooks(hooks),
-	)
-
-	getClient := func(_ context.Context) (*gogithub.Client, error) {
-		return restClient, nil // closing over client
-	}
-
-	getGQLClient := func(_ context.Context) (*githubv4.Client, error) {
-		return gqlClient, nil // closing over client
-	}
-
-	getRawClient := func(ctx context.Context) (*raw.Client, error) {
-		client, err := getClient(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get GitHub client: %w", err)
-		}
-		return raw.NewClient(client, apiHost.rawURL), nil // closing over client
-	}
-
-	// Create default toolsets
-	tsg := github.DefaultToolsetGroup(cfg.ReadOnly, getClient, getGQLClient, getRawClient, cfg.Translator, cfg.ContentWindowSize)
-	err = tsg.EnableToolsets(enabledToolsets, nil)
-
+	hostType, err := utils.ParseHostType(cfg.Host)
 	if err != nil {
-		return nil, fmt.Errorf("failed to enable toolsets: %w", err)
+		return nil, fmt.Errorf("failed to classify API host: %w", err)
 	}
 
-	// Register all mcp functionality with the server
-	tsg.RegisterAll(ghServer)
-
-	if cfg.DynamicToolsets {
-		dynamic := github.InitDynamicToolset(ghServer, tsg, cfg.Translator)
-		dynamic.RegisterTools(ghServer)
+	clients, err := createGitHubClients(cfg, apiHost)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GitHub clients: %w", err)
 	}
+
+	// Create feature checker — resolves explicit features + insiders expansion
+	featureChecker := createFeatureChecker(cfg.EnabledFeatures, cfg.InsidersMode)
+
+	// Create dependencies for tool handlers
+	obs, err := observability.NewExporters(cfg.Logger, metrics.NewNoopMetrics())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create observability exporters: %w", err)
+	}
+	deps := github.NewBaseDeps(
+		clients.rest,
+		clients.gql,
+		clients.raw,
+		clients.repoAccess,
+		cfg.Translator,
+		github.FeatureFlags{
+			LockdownMode: cfg.LockdownMode,
+		},
+		cfg.ContentWindowSize,
+		featureChecker,
+		obs,
+	)
+	deps.StateSealer, err = requeststate.NewRandom()
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure request-state protection: %w", err)
+	}
+	// Build and register the tool/resource/prompt inventory
+	inventoryBuilder := github.NewInventory(cfg.Translator, github.WithHost(hostType)).
+		WithDeprecatedAliases(github.DeprecatedToolAliases).
+		WithReadOnly(cfg.ReadOnly).
+		WithToolsets(github.ResolvedEnabledToolsets(cfg.EnabledToolsets, cfg.EnabledTools)).
+		WithTools(github.CleanTools(cfg.EnabledTools)).
+		WithExcludeTools(cfg.ExcludeTools).
+		WithServerInstructions().
+		WithFeatureChecker(featureChecker)
+
+	// Apply token scope filtering if scopes are known (for PAT filtering)
+	if cfg.TokenScopes != nil {
+		inventoryBuilder = inventoryBuilder.WithFilter(github.CreateToolScopeFilter(cfg.TokenScopes))
+	}
+
+	inventory, err := inventoryBuilder.Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build inventory: %w", err)
+	}
+
+	ghServer, err := github.NewMCPServer(ctx, &cfg, deps, inventory)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GitHub MCP server: %w", err)
+	}
+
+	ghServer.AddReceivingMiddleware(addUserAgentsMiddleware(cfg))
 
 	return ghServer, nil
 }
@@ -169,9 +251,13 @@ type StdioServerConfig struct {
 	// See: https://github.com/github/github-mcp-server?tab=readme-ov-file#tool-configuration
 	EnabledToolsets []string
 
-	// Whether to enable dynamic toolsets
-	// See: https://github.com/github/github-mcp-server?tab=readme-ov-file#dynamic-tool-discovery
-	DynamicToolsets bool
+	// EnabledTools is a list of specific tools to enable (additive to toolsets)
+	// When specified, these tools are registered in addition to any specified toolset tools
+	EnabledTools []string
+
+	// EnabledFeatures is a list of feature flags that are enabled
+	// Tool feature rules evaluate entries in this list.
+	EnabledFeatures []string
 
 	// ReadOnly indicates if we should only register read-only tools
 	ReadOnly bool
@@ -188,31 +274,54 @@ type StdioServerConfig struct {
 
 	// Content window size
 	ContentWindowSize int
+
+	// LockdownMode indicates if we should enable lockdown mode
+	LockdownMode bool
+
+	// InsidersMode expands to the curated set of feature flags enabled for insiders.
+	InsidersMode bool
+
+	// ExcludeTools is a list of tool names to disable regardless of other settings.
+	// These tools will be excluded even if their toolset is enabled or they are
+	// explicitly listed in EnabledTools.
+	ExcludeTools []string
+
+	// RepoAccessCacheTTL overrides the default TTL for repository access cache entries.
+	RepoAccessCacheTTL *time.Duration
+
+	// OAuthManager, when non-nil, enables OAuth 2.1 login for stdio mode. The
+	// server starts without a token and runs the authorization flow on the
+	// first tool call (see createOAuthMiddleware). It is mutually exclusive with
+	// a static Token.
+	OAuthManager *oauth.Manager
+
+	// OAuthScopes are the scopes requested during OAuth login. They double as
+	// the scope set for tool filtering: tools requiring a scope outside this set
+	// are hidden. The default set is the full supported list, which hides
+	// nothing; an explicit, narrower list filters accordingly.
+	OAuthScopes []string
+
+	// TokenProvider supplies a token for each GitHub API request.
+	TokenProvider func() string
 }
 
 // RunStdioServer is not concurrent safe.
 func RunStdioServer(cfg StdioServerConfig) error {
+	authModes := 0
+	for _, on := range []bool{cfg.Token != "", cfg.OAuthManager != nil, cfg.TokenProvider != nil} {
+		if on {
+			authModes++
+		}
+	}
+	if authModes > 1 {
+		return fmt.Errorf("choose exactly one authentication mode: a static Token, OAuthManager, or TokenProvider")
+	}
+
 	// Create app context
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	t, dumpTranslations := translations.TranslationHelper()
-
-	ghServer, err := NewMCPServer(MCPServerConfig{
-		Version:           cfg.Version,
-		Host:              cfg.Host,
-		Token:             cfg.Token,
-		EnabledToolsets:   cfg.EnabledToolsets,
-		DynamicToolsets:   cfg.DynamicToolsets,
-		ReadOnly:          cfg.ReadOnly,
-		Translator:        t,
-		ContentWindowSize: cfg.ContentWindowSize,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create MCP server: %w", err)
-	}
-
-	stdioServer := server.NewStdioServer(ghServer)
 
 	var slogHandler slog.Handler
 	var logOutput io.Writer
@@ -228,9 +337,58 @@ func RunStdioServer(cfg StdioServerConfig) error {
 		slogHandler = slog.NewTextHandler(logOutput, &slog.HandlerOptions{Level: slog.LevelInfo})
 	}
 	logger := slog.New(slogHandler)
-	logger.Info("starting server", "version", cfg.Version, "host", cfg.Host, "dynamicToolsets", cfg.DynamicToolsets, "readOnly", cfg.ReadOnly)
-	stdLogger := log.New(logOutput, stdioServerLogPrefix, 0)
-	stdioServer.SetErrorLogger(stdLogger)
+	logger.Info("starting server", "version", cfg.Version, "host", cfg.Host, "readOnly", cfg.ReadOnly, "lockdownEnabled", cfg.LockdownMode)
+
+	// Determine the scope set used to filter tools. Classic PATs expose their
+	// granted scopes via the API; OAuth uses the requested scopes (the default
+	// set hides nothing, a narrower explicit set filters accordingly). Other
+	// token types don't advertise scopes, so filtering is skipped.
+	var tokenScopes []string
+	switch {
+	case strings.HasPrefix(cfg.Token, "ghp_"):
+		fetchedScopes, err := fetchTokenScopesForHost(ctx, cfg.Token, cfg.Host)
+		if err != nil {
+			logger.Warn("failed to fetch token scopes, continuing without scope filtering", "error", err)
+		} else {
+			tokenScopes = fetchedScopes
+			logger.Info("token scopes fetched for filtering", "scopes", tokenScopes)
+		}
+	case cfg.OAuthManager != nil:
+		tokenScopes = cfg.OAuthScopes
+		logger.Info("using requested OAuth scopes for tool filtering", "scopes", tokenScopes)
+	default:
+		logger.Debug("skipping scope filtering for non-PAT token")
+	}
+
+	tokenProvider := cfg.TokenProvider
+	var toolHandlerMiddleware []inventory.ToolHandlerMiddleware
+	if cfg.OAuthManager != nil {
+		tokenProvider = cfg.OAuthManager.AccessToken
+		toolHandlerMiddleware = append(toolHandlerMiddleware, createOAuthToolMiddleware(cfg.OAuthManager, logger))
+	}
+
+	ghServer, err := NewStdioMCPServer(ctx, github.MCPServerConfig{
+		Version:               cfg.Version,
+		Host:                  cfg.Host,
+		Token:                 cfg.Token,
+		EnabledToolsets:       cfg.EnabledToolsets,
+		EnabledTools:          cfg.EnabledTools,
+		EnabledFeatures:       cfg.EnabledFeatures,
+		ReadOnly:              cfg.ReadOnly,
+		Translator:            t,
+		ContentWindowSize:     cfg.ContentWindowSize,
+		LockdownMode:          cfg.LockdownMode,
+		InsidersMode:          cfg.InsidersMode,
+		ExcludeTools:          cfg.ExcludeTools,
+		Logger:                logger,
+		RepoAccessTTL:         cfg.RepoAccessCacheTTL,
+		TokenScopes:           tokenScopes,
+		TokenProvider:         tokenProvider,
+		ToolHandlerMiddleware: toolHandlerMiddleware,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create MCP server: %w", err)
+	}
 
 	if cfg.ExportTranslations {
 		// Once server is initialized, all translations are loaded
@@ -240,15 +398,20 @@ func RunStdioServer(cfg StdioServerConfig) error {
 	// Start listening for messages
 	errC := make(chan error, 1)
 	go func() {
-		in, out := io.Reader(os.Stdin), io.Writer(os.Stdout)
+		var in io.ReadCloser
+		var out io.WriteCloser
+
+		in = os.Stdin
+		out = os.Stdout
 
 		if cfg.EnableCommandLogging {
 			loggedIO := mcplog.NewIOLogger(in, out, logger)
 			in, out = loggedIO, loggedIO
 		}
+
 		// enable GitHub errors in the context
 		ctx := errors.ContextWithGitHubErrors(ctx)
-		errC <- stdioServer.Listen(ctx, in, out)
+		errC <- ghServer.Run(ctx, &mcp.IOTransport{Reader: in, Writer: out})
 	}()
 
 	// Output github-mcp-server string
@@ -268,254 +431,52 @@ func RunStdioServer(cfg StdioServerConfig) error {
 	return nil
 }
 
-type apiHost struct {
-	baseRESTURL *url.URL
-	graphqlURL  *url.URL
-	uploadURL   *url.URL
-	rawURL      *url.URL
+// createFeatureChecker returns a FeatureFlagChecker that resolves features
+// using the centralized ResolveFeatureFlags function. For the local server,
+// features are resolved once at startup from --features CLI flag and insiders mode.
+func createFeatureChecker(enabledFeatures []string, insidersMode bool) inventory.FeatureFlagChecker {
+	featureSet := github.ResolveFeatureFlags(enabledFeatures, insidersMode)
+	return func(_ context.Context, flagName string) (bool, error) {
+		return featureSet[flagName], nil
+	}
 }
 
-func newDotcomHost() (apiHost, error) {
-	baseRestURL, err := url.Parse("https://api.github.com/")
-	if err != nil {
-		return apiHost{}, fmt.Errorf("failed to parse dotcom REST URL: %w", err)
+func stdioUserAgent(cfg github.MCPServerConfig, client *mcp.Implementation) string {
+	agent := fmt.Sprintf("github-mcp-server/%s", cfg.Version)
+	if client != nil {
+		comment := strconv.Quote(client.Name + "/" + client.Version)
+		comment = comment[1 : len(comment)-1]
+		comment = strings.NewReplacer("(", `\(`, ")", `\)`).Replace(comment)
+		agent += " (" + comment + ")"
 	}
-
-	gqlURL, err := url.Parse("https://api.github.com/graphql")
-	if err != nil {
-		return apiHost{}, fmt.Errorf("failed to parse dotcom GraphQL URL: %w", err)
+	if cfg.InsidersMode {
+		agent += " (insiders)"
 	}
-
-	uploadURL, err := url.Parse("https://uploads.github.com")
-	if err != nil {
-		return apiHost{}, fmt.Errorf("failed to parse dotcom Upload URL: %w", err)
-	}
-
-	rawURL, err := url.Parse("https://raw.githubusercontent.com/")
-	if err != nil {
-		return apiHost{}, fmt.Errorf("failed to parse dotcom Raw URL: %w", err)
-	}
-
-	return apiHost{
-		baseRESTURL: baseRestURL,
-		graphqlURL:  gqlURL,
-		uploadURL:   uploadURL,
-		rawURL:      rawURL,
-	}, nil
+	return agent
 }
 
-func newGHECHost(hostname string) (apiHost, error) {
-	u, err := url.Parse(hostname)
-	if err != nil {
-		return apiHost{}, fmt.Errorf("failed to parse GHEC URL: %w", err)
-	}
-
-	// Unsecured GHEC would be an error
-	if u.Scheme == "http" {
-		return apiHost{}, fmt.Errorf("GHEC URL must be HTTPS")
-	}
-
-	restURL, err := url.Parse(fmt.Sprintf("https://api.%s/", u.Hostname()))
-	if err != nil {
-		return apiHost{}, fmt.Errorf("failed to parse GHEC REST URL: %w", err)
-	}
-
-	gqlURL, err := url.Parse(fmt.Sprintf("https://api.%s/graphql", u.Hostname()))
-	if err != nil {
-		return apiHost{}, fmt.Errorf("failed to parse GHEC GraphQL URL: %w", err)
-	}
-
-	uploadURL, err := url.Parse(fmt.Sprintf("https://uploads.%s", u.Hostname()))
-	if err != nil {
-		return apiHost{}, fmt.Errorf("failed to parse GHEC Upload URL: %w", err)
-	}
-
-	rawURL, err := url.Parse(fmt.Sprintf("https://raw.%s/", u.Hostname()))
-	if err != nil {
-		return apiHost{}, fmt.Errorf("failed to parse GHEC Raw URL: %w", err)
-	}
-
-	return apiHost{
-		baseRESTURL: restURL,
-		graphqlURL:  gqlURL,
-		uploadURL:   uploadURL,
-		rawURL:      rawURL,
-	}, nil
-}
-
-func newGHESHost(hostname string) (apiHost, error) {
-	u, err := url.Parse(hostname)
-	if err != nil {
-		return apiHost{}, fmt.Errorf("failed to parse GHES URL: %w", err)
-	}
-
-	restURL, err := url.Parse(fmt.Sprintf("%s://%s/api/v3/", u.Scheme, u.Hostname()))
-	if err != nil {
-		return apiHost{}, fmt.Errorf("failed to parse GHES REST URL: %w", err)
-	}
-
-	gqlURL, err := url.Parse(fmt.Sprintf("%s://%s/api/graphql", u.Scheme, u.Hostname()))
-	if err != nil {
-		return apiHost{}, fmt.Errorf("failed to parse GHES GraphQL URL: %w", err)
-	}
-
-	// Check if subdomain isolation is enabled
-	// See https://docs.github.com/en/enterprise-server@3.17/admin/configuring-settings/hardening-security-for-your-enterprise/enabling-subdomain-isolation#about-subdomain-isolation
-	hasSubdomainIsolation := checkSubdomainIsolation(u.Scheme, u.Hostname())
-
-	var uploadURL *url.URL
-	if hasSubdomainIsolation {
-		// With subdomain isolation: https://uploads.hostname/
-		uploadURL, err = url.Parse(fmt.Sprintf("%s://uploads.%s/", u.Scheme, u.Hostname()))
-	} else {
-		// Without subdomain isolation: https://hostname/api/uploads/
-		uploadURL, err = url.Parse(fmt.Sprintf("%s://%s/api/uploads/", u.Scheme, u.Hostname()))
-	}
-	if err != nil {
-		return apiHost{}, fmt.Errorf("failed to parse GHES Upload URL: %w", err)
-	}
-
-	var rawURL *url.URL
-	if hasSubdomainIsolation {
-		// With subdomain isolation: https://raw.hostname/
-		rawURL, err = url.Parse(fmt.Sprintf("%s://raw.%s/", u.Scheme, u.Hostname()))
-	} else {
-		// Without subdomain isolation: https://hostname/raw/
-		rawURL, err = url.Parse(fmt.Sprintf("%s://%s/raw/", u.Scheme, u.Hostname()))
-	}
-	if err != nil {
-		return apiHost{}, fmt.Errorf("failed to parse GHES Raw URL: %w", err)
-	}
-
-	return apiHost{
-		baseRESTURL: restURL,
-		graphqlURL:  gqlURL,
-		uploadURL:   uploadURL,
-		rawURL:      rawURL,
-	}, nil
-}
-
-// checkSubdomainIsolation detects if GitHub Enterprise Server has subdomain isolation enabled
-// by attempting to ping the raw.<host>/_ping endpoint on the subdomain. The raw subdomain must always exist for subdomain isolation.
-func checkSubdomainIsolation(scheme, hostname string) bool {
-	subdomainURL := fmt.Sprintf("%s://raw.%s/_ping", scheme, hostname)
-
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		// Don't follow redirects - we just want to check if the endpoint exists
-		//nolint:revive // parameters are required by http.Client.CheckRedirect signature
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-
-	resp, err := client.Get(subdomainURL)
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-
-	return resp.StatusCode == http.StatusOK
-}
-
-// Note that this does not handle ports yet, so development environments are out.
-func parseAPIHost(s string) (apiHost, error) {
-	if s == "" {
-		return newDotcomHost()
-	}
-
-	u, err := url.Parse(s)
-	if err != nil {
-		return apiHost{}, fmt.Errorf("could not parse host as URL: %s", s)
-	}
-
-	if u.Scheme == "" {
-		return apiHost{}, fmt.Errorf("host must have a scheme (http or https): %s", s)
-	}
-
-	if strings.HasSuffix(u.Hostname(), "github.com") {
-		return newDotcomHost()
-	}
-
-	if strings.HasSuffix(u.Hostname(), "ghe.com") {
-		return newGHECHost(s)
-	}
-
-	return newGHESHost(s)
-}
-
-type userAgentTransport struct {
-	transport http.RoundTripper
-	agent     string
-}
-
-func (t *userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	req = req.Clone(req.Context())
-	req.Header.Set("User-Agent", t.agent)
-	return t.transport.RoundTrip(req)
-}
-
-type bearerAuthTransport struct {
-	transport http.RoundTripper
-	token     string
-}
-
-func (t *bearerAuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	req = req.Clone(req.Context())
-	req.Header.Set("Authorization", "Bearer "+t.token)
-	return t.transport.RoundTrip(req)
-}
-
-// cleanToolsets cleans and handles special toolset keywords:
-// - Duplicates are removed from the result
-// - Removes whitespaces
-// - Validates toolset names and returns invalid ones separately
-// - "all": Returns ["all"] immediately, ignoring all other toolsets
-// - when dynamicToolsets is true, filters out "all" from the enabled toolsets
-// - "default": Replaces with the actual default toolset IDs from GetDefaultToolsetIDs()
-// Returns: (validToolsets, invalidToolsets)
-func cleanToolsets(enabledToolsets []string, dynamicToolsets bool) ([]string, []string) {
-	seen := make(map[string]bool)
-	result := make([]string, 0, len(enabledToolsets))
-	invalid := make([]string, 0)
-	validIDs := github.GetValidToolsetIDs()
-
-	// Add non-default toolsets, removing duplicates and trimming whitespace
-	for _, toolset := range enabledToolsets {
-		trimmed := strings.TrimSpace(toolset)
-		if trimmed == "" {
-			continue
-		}
-		if !seen[trimmed] {
-			seen[trimmed] = true
-			if trimmed != github.ToolsetMetadataDefault.ID && trimmed != github.ToolsetMetadataAll.ID {
-				// Validate the toolset name
-				if validIDs[trimmed] {
-					result = append(result, trimmed)
-				} else {
-					invalid = append(invalid, trimmed)
-				}
+func addUserAgentsMiddleware(cfg github.MCPServerConfig) func(next mcp.MethodHandler) mcp.MethodHandler {
+	return func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, request mcp.Request) (result mcp.Result, err error) {
+			var client *mcp.Implementation
+			if info, ok := request.(interface{ ClientInfo() *mcp.Implementation }); ok {
+				client = info.ClientInfo()
 			}
+			ctx = transport.WithUserAgent(ctx, stdioUserAgent(cfg, client))
+			return next(ctx, method, request)
 		}
 	}
+}
 
-	hasDefault := seen[github.ToolsetMetadataDefault.ID]
-	hasAll := seen[github.ToolsetMetadataAll.ID]
-
-	// Handle "all" keyword - return early if not in dynamic mode
-	if hasAll && !dynamicToolsets {
-		return []string{github.ToolsetMetadataAll.ID}, invalid
+// fetchTokenScopesForHost fetches the OAuth scopes for a token from the GitHub API.
+// It constructs the appropriate API host URL based on the configured host.
+func fetchTokenScopesForHost(ctx context.Context, token, host string) ([]string, error) {
+	apiHost, err := utils.NewAPIHost(host)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse API host: %w", err)
 	}
 
-	// Expand "default" keyword to actual default toolsets
-	if hasDefault {
-		for _, defaultToolset := range github.GetDefaultToolsetIDs() {
-			if !seen[defaultToolset] {
-				result = append(result, defaultToolset)
-				seen[defaultToolset] = true
-			}
-		}
-	}
+	fetcher := scopes.NewFetcher(apiHost, scopes.FetcherOptions{})
 
-	return result, invalid
+	return fetcher.FetchTokenScopes(ctx, token)
 }

@@ -1,17 +1,21 @@
 {
   "annotations": {
-    "title": "Remove sub-issue",
-    "readOnlyHint": false
+    "destructiveHint": true,
+    "idempotentHint": false,
+    "openWorldHint": true,
+    "readOnlyHint": false,
+    "title": "Remove Sub-Issue"
   },
-  "description": "Remove a sub-issue from a parent issue in a GitHub repository.",
+  "description": "Remove a sub-issue from a parent issue.",
   "inputSchema": {
     "properties": {
       "issue_number": {
-        "description": "The number of the parent issue",
+        "description": "The parent issue number",
+        "minimum": 1,
         "type": "number"
       },
       "owner": {
-        "description": "Repository owner",
+        "description": "Repository owner (username or organization)",
         "type": "string"
       },
       "repo": {
